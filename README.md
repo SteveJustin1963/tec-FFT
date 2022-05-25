@@ -11,6 +11,7 @@ get spectrum of freq input on serial in using FFT
 - https://www.ripplon.com/code/fft842.html
 - Albert Michelson's Harmonic Analyzer
 - https://www.sciencedirect.com/topics/engineering/fast-fourier-transform
+- https://codeforces.com/blog/entry/43499
 - 
 
 
