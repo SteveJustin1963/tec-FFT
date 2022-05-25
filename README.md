@@ -13,6 +13,7 @@ get spectrum of freq input on serial in using FFT
 - https://www.sciencedirect.com/topics/engineering/fast-fourier-transform
 - https://codeforces.com/blog/entry/43499
 - https://www.earlevel.com/main/2002/08/31/a-gentle-introduction-to-the-fft/
+- http://www.nrbook.com/a/bookcpdf.php
 - 
 
 
