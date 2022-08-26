@@ -1,7 +1,6 @@
 # tec-FFT
  
-
-get spectrum of freq input on serial in using FFT
+read an input and convert to spectrum bars to output on 8x8 or 7 seg using FFT algorithm
 
 
 ### Ref
