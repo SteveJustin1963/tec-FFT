@@ -32,6 +32,16 @@
 ; recorded on EPROM, have been lost over time, more than 36 years
 ; at the time. In this code there are notes where errors can occur.
 ;
+
+
+
+; sj modding to make it work in asm80 and later cut down for tec1
+
+
+
+
+
+
 ;------------------------------------------------------ --------
 ;
 ; MEMORY MAPPING (HEXADECIMAL)
@@ -148,18 +158,83 @@ DISPL: EQU 3800H 	; DISPLAY address, mapped in memory
 ; On the following pages is the commented listing of the program
 ; in ASSEMBLY.
 ;
+
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+;The FFT routine is in the first 256 Bytes of RAM.
+;The result of the FFT is in the second 256 Bytes of RAM.
+;The amplitude of the FFT is in the third 256 Bytes of RAM.
+;The fourth 256 Bytes of RAM are empty.
+
+;The first 256 Bytes of RAM can be used as the input to the FFT
+;by replacing the LD A, 128 instruction with an input instruction.
+;This will allow the FFT to be executed with real-time input.
+;The input can be from a microphone, for example.
+
+
+;The FFT Assembly program
+
+;The program includes a "page" switch subroutine. Here,
+;each page is 256 Bytes. As we have 8 pages (2048 Bytes) available
+;in RAM, it's interesting
+;that each page can be shown separately, for greater resolution,
+;especially when being used as the memory
+;of an oscilloscope. The subroutine rotates pages. It is executed
+;through a non-maskable CPU interrupt.
+
+;The FFT calculation routine includes a subroutine that saves
+;the sampled signal that is in the first 256 addresses of RAM.
+;The FFT routine is executed through an interrupt, masking
+;theravel, from the CPU.
+
+;After the FFT routine is executed, the rotation subroutine
+;is no longer executed. A subroutine is executed
+;which puts in the first 256 Bytes of RAM, sometimes the result of the
+;FFT, now the sampled signal, for each interrupt, is not masked.
+;Theravel, from the CPU.
+
+;The FFT routine can be modified for the calculation with
+;fewer points, simply changing the instruction that
+;is at address 0100H (LD A, 128).
+
+;Ex.: To calculate the FFT with 128 points, the instruction
+;LD A, 128 should be replaced by LD A, 64.
+;The Instruction may still be replaced by an input instruction. 
+;Ex.: IN A, (door).
+
+;On the following pages is the commented listing of the program
+;in ASSEMBLY.
+
+;The FFT routine is in the first 256 Bytes of RAM.
+;The result of the FFT is in the second 256 Bytes of RAM.
+;The amplitude of the FFT is in the third 256 Bytes of RAM.
+;The fourth 256 Bytes of RAM are empty.
+
+;The first 256 Bytes of RAM can be used as the input to the FFT
+;by replacing the LD A, 128 instruction with an input instruction.
+;This will allow the FFT to be executed with real-time input.
+;The input can be from a microphone, for example.
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+
 ;------------------------------------------------ -------------
-;;--------------------; 71 DEEL/UFRJ
+ 
 ;
         ORG 0000H
 ;
-
-; The code starts by loading the value 13FFH into the stack pointer,
-; which sets the end of RAM at address 0000H.
+; The code loads the stack pointer (SP) with the address of the last byte of RAM. 13FFH
+; It then enables interrupts and sets the display to all zeros. 
 ; It then enables interrupts and sets the display to mode 1.
-; Next, it zeroes out the flag which indicates if the FFT was calculated and sets
-; the values of BC and DE to 127 and 801H respectively.
-; Finally, it loads the value A (which contains the value 255) into the content of address 0880H.
+; The code then zeroes out the FLAG register, which indicates if the Fast Fourier Transform (FFT) has been calculated. 
+; The code then loads the 
+; BC register with the number of bytes to be copied, 127
+; DE register with the destination address, 801H
+; HL register with the source address. 
+; The code then copies the contents of the source address to the destination address. 
+; The code then increments the HL and DE registers and decrements the BC register. 
+; The code then repeats this process until the BC register is decremented to zero. 
+; The code then calls the FFT routine and returns from the interrupt.
+
 
 START: LD SP, 13FFH 	; Last End of RAM 0000 31 FF 13
                      	; to SP, RAM starts
@@ -191,17 +266,6 @@ START: LD SP, 13FFH 	; Last End of RAM 0000 31 FF 13
                      	; address initial font
         LDIR 		; Put 255 in BYTES 0026 ED B0
                      	; from 129 to 511 of RAM
-
-;--------------------; 72 DEEL/UFRJ
-; The code loads the value 128 into register A, loads the value 127 into registers BC,
-; loads the value 901 into register DE, loads the value 900 into register HL,
-; stores the value in register A at the address in register HL,
-; loads the value 255 into HL and DE, jumps to the label PULA1,
-; loads the value 9 into register A, stores the value in register A at the address PAG,
-; stores the value in register A at the address FLAG,
-; calls the subroutine FFT, and returns from the interrupt.
-
-
         LD A, 128	; 128 for the ACC 0028 3E 80
         LD BC, 127	; qty of BYTES to be 002A 01 7F 00
                      	; copied
@@ -228,58 +292,61 @@ END: RETI 		; Return from interrupt 0043 ED 4D
 ; and store the value 255 in all odd-numbered bytes.
 
 
-PULA1:  LD BC, 126	; qty of BYTES to be 0045 01 7E 00 copied
-        LD DE, 0982H	; address initial destination 0048 11 82 09
-        LD HL, 0980H	; address initial font 004B 21 80 09
-        XOR A 		; Zero ACC 004E AF
-        LD (HL), A	; 0980H contains zero and 004F 77 , 0981H contains 255
-        LDIR ; Put zero in BYTES 0050 ED B0
-                 	; pairs and 255 in BYTES odd from address 384 to 511 from RAM
-NOP 			; 0052 00
-			; The code is copying the contents of the first 512 bytes of RAM for the next 1536 bytes of RAM.
-         NOP 		; 0053 00
-         LD BC, 1536	; qty from BYTES to 0054 01 00 06  transfer, 6 pages
-         LD DE, 0A00h	; address initial destination 0057 11 00 0A
-         LD HL, 0800H	; address initial source 005A 21 00 08
-         LDIR 		; Copy the contents of the 005D ED B0
-                      	; first 512 BYTES of RAM for the next 1536 BYTES of RAM
-         XOR A 		; Zero ACC 005F AF
-         LD (PAG), A	; Zero End. relative of 0060 32 61 10 DISPLAY table
-				; The code stops the CPU and releases the hardware bus.
-				; After executing an interrupt, the code jumps back to the previous state.
-STOP: 	HALT 		; Stops the CPU and releases the 0063 76 hardware bus
-        JR STOP 	; After executing a 0064 18 FD interrupt back to previous state
+PULA1:  LD BC, 126	        ; qty of BYTES to be 0045 01 7E 00 copied
+        LD DE, 0982H	    ; address initial destination 0048 11 82 09
+        LD HL, 0980H	    ; address initial font 004B 21 80 09
+        XOR A 		        ; Zero ACC 004E AF
+        LD (HL), A	        ; 0980H contains zero and 004F 77 , 0981H contains 255
+        LDIR                ; Put zero in BYTES 0050 ED B0
+                 	        ; pairs and 255 in BYTES odd from address 384 to 511 from RAM
+NOP 			            ; 0052 00
+			                ; The code is copying the contents of the first 512 bytes of RAM for the next 1536 bytes of RAM.
+         NOP 		        ; 0053 00
+         LD BC, 1536	    ; qty from BYTES to 0054 01 00 06  transfer, 6 pages
+         LD DE, 0A00h	    ; address initial destination 0057 11 00 0A
+         LD HL, 0800H	    ; address initial source 005A 21 00 08
+         LDIR 		        ; Copy the contents of the 005D ED B0
+                      	    ; first 512 BYTES of RAM for the next 1536 BYTES of RAM
+         XOR A 		        ; Zero ACC 005F AF
+         LD (PAG), A	    ; Zero End. relative of 0060 32 61 10 DISPLAY table
+				            ; The code stops the CPU and releases the hardware bus.
+				            ; After executing an interrupt, the code jumps back to the previous state.
+STOP: 	HALT 		        ; Stops the CPU and releases the 0063 76 hardware bus
+        JR STOP 	        ; After executing a 0064 18 FD interrupt back to previous state
+			                ; The code is checking if the flag is set to 0066 3A 60 10,
+			                ; and if it is, it will skip to the next section of code.
+			                ; Otherwise, it will exchange the first 8 pages of RAM and continue to the next section.
+NMI:    LD A, (FLAG)	    ; If FLAG other than 0066 3A 60 10
+                     	    ; zero the FFT is already gone calculated
+        OR A         	    ; Check if it was already 0069 B7
+                     	    ; calculated the FFT
+        JR NZ, 5	        ; If already calculated, skip 006A 20 05
+                     	    ; One page = 256 BYTES
+        CALL EXCHANGE8 	    ; Rotates 006C CD 7C 00
+                     	    ; first 8 pages of ram, carousel
+        JR 5	            ; 006F 18 03
+
+SKIP2:  CALL EXCHANGE2 	    ; Put the end. initial 0071 CD AB 00
+                     	    ; of RAM, the spectrum or the sampled signal
+SKIP3:  CALL DISPLAY 	    ; Indicates which page 0074 CD CD 00
+                     	    ; of RAM, it's on the page, zero or if it's
+	                        ; spectrum or signal sampled from which it was calculated at FFT
+        CALL 00DAh          ; Call routine for 0077 CD DA 00
+      	                    ; DEBOUNCE, wait
+            	            ; 426 milliseconds
+FIMNMI: RETN 	            ; End of NMI 007A ED 45
 
 ;--------------------;
-			; The code is checking if the flag is set to 0066 3A 60 10,
-			; and if it is, it will skip to the next section of code.
-			; Otherwise, it will exchange the first 8 pages of RAM and continue to the next section.
-NMI:    LD A, (FLAG)	; If FLAG other than 0066 3A 60 10
-                     	; zero the FFT is already gone calculated
-        OR A         	; Check if it was already 0069 B7
-                     	; calculated the FFT
-        JR NZ, 5	; If already calculated, skip 006A 20 05
+; This code transfers 256 BYTES from the initial font location at 0800H ; to the initial destination at 1080H. 
+; It then transfers 1792 BYTES from the initial font location at 0900H to the initial destination at 0800H. 
+; Finally, it transfers 256 BYTES from the initial font location at 1080H to the initial destination at 0F00H. why
 
-                     	; One page = 256 BYTES
-        CALL EXCHANGE8 	; Rotates 006C CD 7C 00
-                     	; first 8 pages of ram, carousel
-        JR 5	; 006F 18 03
-
-SKIP2:  CALL EXCHANGE2 	; Put the end. initial 0071 CD AB 00
-                     	; of RAM, the spectrum or the sampled signal
-SKIP3:  CALL DISPLAY 	; Indicates which page 0074 CD CD 00
-                     	; of RAM, it's on the page, zero or if it's
-	                ; spectrum or signal sampled from which it was calculated at FFT
-        CALL 00DAh    ; Call routine for 0077 CD DA 00
-      	                ; DEBOUNCE, wait
-            	        ; 426 milliseconds
-FIMNMI: RETN 	        ; End of NMI 007A ED 45
-
-;--------------------;
-; This code transfers 256 BYTES from the initial font location at 0800H to the initial destination at 1080H. It then transfers 1792 BYTES from the initial font location at 0900H to the initial destination at 0800H. Finally, it transfers 256 BYTES from the initial font location at 1080H to the initial destination at 0F00H. why
-
-
-; The code first loads the registers BC, DE, and HL with the values 256, 1080, and 0800 respectively. It then executes the LDIR instruction which saves the 256 BYTES of RAM page zero. Next, the code loads the registers BC, DE, and HL with the values 1792, 0800, and 0900 respectively. It then executes the LDIR instruction which shifts 1792 BYTES from pages 1 to 7 for the zero pages up to 6 of RAM. Finally, the code loads the registers BC, DE, and HL with the values 256, 0F00, and 1080 respectively. It then executes the LDIR instruction which puts the old page content zero on page 7 of RAM.
+; The code first loads the registers BC, DE, and HL with the values 256, 1080, and 0800 respectively. 
+; It then executes the LDIR instruction which saves the 256 BYTES of RAM page zero. 
+; Next, the code loads the registers BC, DE, and HL with the values 1792, 0800, and 0900 respectively. 
+; It then executes the LDIR instruction which shifts 1792 BYTES from pages 1 to 7 for the zero pages up to 6 of RAM. 
+; Finally, the code loads the registers BC, DE, and HL with the values 256, 0F00, and 1080 respectively. 
+; It then executes the LDIR instruction which puts the old page content zero on page 7 of RAM.
 
 
 EXCHANGE8: LD BC, 256 	; qty from BYTES to 007C 01 00 01
@@ -315,9 +382,6 @@ PULA4: LD (PAG), A	; Guard End. relative 00A7 32 61 10
                      	; of the current character
         RET			; End of exchange 00AA C9
 
-;--------------------;
-; The LD BC, 256 instruction loads the 16-bit values 00AB and 01 into the 16-bit register BC. The LD DE, 0800H instruction loads the 16-bit values 00AE and 11 into the 16-bit register DE. The LD A, (PAG) instruction loads the value stored at memory location PAG into register A. The INC A instruction increments the value in register A by 1. The CP 0AH instruction compares the value in register A with the value 0AH and sets the zero flag if they are equal. The JR NZ, PULA5 instruction jumps to the label PULA5 if the zero flag is not set. The LD A, 8 instruction loads the value 8 into register A. The LD (PAG), A instruction stores the value in register A at memory location PAG. The LD HL, 1080H instruction loads the 16-bit values 1080H into the 16-bit register HL. The LDIR instruction loads the value in register HL into register DE and then increments the values in HL and DE. The RET instruction returns from the current subroutine.
-; The PULA5 label is used to store the current character in memory. The LD (PAG), A instruction stores the value in register A at memory location PAG. The LD HL, 1180H instruction loads the 16-bit values 1180H into the 16-bit register HL. The LDIR instruction loads the value in register HL into register DE and then increments the values in HL and DE. The RET instruction returns from the current subroutine.
 
 EXCHANGE2: LD BC, 256 	; qty from BYTES to 00AB 01 00 01
                      	; transfer, 1 page
@@ -339,6 +403,8 @@ EXCHANGE2: LD BC, 256 	; qty from BYTES to 00AB 01 00 01
         LDIR 		; Copy to page 00C1 ED B0
                      	; zero of RAM the sign of the which was calculated spectrum
         RET			; 00C3 C9
+        
+        
 PULA5:  LD (PAG), A 	; Guard End. relative 00C4 32 61 10
                      	; of the current character
         LD HL, 1180H	; address initial of 00C7 21 80 11
@@ -350,7 +416,12 @@ PULA5:  LD (PAG), A 	; Guard End. relative 00C4 32 61 10
 
 
 ;--------------------;
-; The code above displays a character on the screen and then waits for 426 milliseconds. The character is displayed by first loading the accumulator with the address of the character to be displayed. The HL register is then loaded with the address of the display table. The character code is then added to the accumulator and the result is stored in the HL register. The character code is then retrieved from the HL register and stored in the display register. Finally, the code waits for 426 milliseconds before returning.
+; The code  displays a character on the screen and then waits for 426 milliseconds. 
+; The character is displayed by first loading the accumulator with the address of the character to be displayed. 
+; The HL register is then loaded with the address of the display table. 
+; The character code is then added to the accumulator and the result is stored in the HL register. 
+; The character code is then retrieved from the HL register and stored in the display register. 
+; Finally, the code waits for 426 milliseconds before returning.
 
 
 DISPLAY: LD A, (PAG)	; address relative of 00CD 3A 61 10
@@ -405,78 +476,70 @@ TDISP:  DB 3FH 		; Code to light '0' 00E3 3F
 
 FFT:    LD A, 128		; Put half the qty. 0100 3E 80
                      	; of points in ACC
-        LD L, A		; 0102 6F
-        LD H, 0		; Transfer to HL 0103 26 00
-        ADD HL, HL 	; Find the qty. of 0105 29
+        LD L, A		    ; 0102 6F
+        LD H, 0		    ; Transfer to HL 0103 26 00
+        ADD HL, HL 	    ; Find the qty. of 0105 29
                      	; N points
-        LD (GN), HL	; I keep it in GN 0106 22 00 10
+        LD (GN), HL	    ; I keep it in GN 0106 22 00 10
                      	; the following snippet calculates:
                      	; M = (LOG N) / LOG 2
         LD HL, 0		; Zero HL 0109 21 00 00
                      	; N/2 is in ACC
-LOOP2:  INC H 		; 010C 24
-        RRA 		; ACC SHIFT to 010D 1F
+LOOP2:  INC H 		    ; 010C 24
+        RRA 		    ; ACC SHIFT to 010D 1F
                      	; right
         JR NC, LOOP2	; Return to BIT = 0 010E 30 FC
-        LD (GM), HL	; Put M in GM + 1 and 0110 22 02 10
+        LD (GM), HL	    ; Put M in GM + 1 and 0110 22 02 10
                      	; zero (GM) for facilitate subroutines of inverse bit
         LD BC, 256		; 0113 01 00 01
         LD DE, 1080H	; address destination of 0116 11 80 10
                      	; sampled points are on page zero of RAM
         LD HL, AI		; address initial page 0119 21 00 08
                      	; RAM zero
-        LDIR 		; Transfers 256 bytes 011C ED B0
-
-;--------------------; 78 DEEL/UFRJ
-
-; The LDBC, 2047 instruction loads the value 2047 into the C register. The purpose of this instruction is to reset the first 2 KBYTES of RAM. The LD DE, AI + 1 instruction loads the value AI + 1 into the DE register. The purpose of this instruction is to point DE to the last BYTE saved. The LD HL, AI instruction loads the value AI into the HL register. The purpose of this instruction is to point HL to the last BYTE of the real part. The LD (HL), 0 instruction loads the value 0 into the HL register. The purpose of this instruction is to reset the first BYTE of RAM. The LDIR instruction zero plus 2047 BYTES. The purpose of this instruction is to zero the first 2 KBYTES of RAM. The LD DE, 117FH instruction loads the value 117FH into the DE register. The purpose of this instruction is to point DE to the last BYTE saved. The LD HL,AI+1023 instruction loads the value AI+1023 into the HL register. The purpose of this instruction is to point HL to the last BYTE of the real part. The LD C, 0 instruction loads the value 0 into the C register. The purpose of this instruction is to start the counter with 256. The LOOP3: LD A, (DE) instruction loads the value (DE) into the A register. The purpose of this instruction is to set the value to ACC to be represented in 4 BYTES (int32_t). The ADD A, 128 instruction adds the value 128 to the A register. The purpose of this instruction is to subtract the level DC 0134 C6 80. The JP P, PULA6 instruction jumps to the PULA6 label if the value in the P register is positive. The purpose of this instruction is to zero the BYTE most significant. The LD (HL), 0FFH instruction loads the value 0FFH into the HL register. The purpose of this instruction is to put FFh no BYTE more significant. The JR PULA7 instruction jumps to the PULA7 label. The purpose of this instruction is to jump to the PULA7 label. The PULA6: LD (HL), 0 instruction loads the value 0 into the HL register. The purpose of this instruction is to zero the BYTE most significant. The PULA7: DEC HL instruction decrements the value in the HL register. The purpose of this instruction is to point HL to the 2nd most significant BYTE. The LD (HL), A instruction loads the value in the A register into the HL register. The purpose of this instruction is to put the value in the 2o most significant BYTE. The DEC HL instruction decrements the value in the HL register. The purpose of this instruction is to point HL to the 3rd most significant BYTE.
-
-        LD BC, 2047	; Objective is to reset the 011E 01 FF 07
+        LDIR 		    ; Transfers 256 bytes 011C ED B0
+                        ;
+        LD BC, 2047	    ; Objective is to reset the 011E 01 FF 07
                      	; first 2 KBYTES of RAM
         LD DE, AI + 1	; 0121 11 01 08
                      	;
         LD HL, AI		; 0124 21 00 08
                      	;
-        LD (HL), 0 	; Resets first BYTE of 0127 36 00
+        LD (HL), 0 	    ; Resets first BYTE of 0127 36 00
                      	; RAM
-        LDIR 		; Zero plus 2047 BYTES 0129 ED B0
+        LDIR 		    ; Zero plus 2047 BYTES 0129 ED B0
                      	;
         LD DE, 117FH	; DE points to last 012B 11 7F 11
                      	; BYTE saved
         LD HL,AI+1023	; HL points to last 012E 21 FF 0B
                      	; BYTE of the real part
-        LD C, 0		; Start counter with 0131 0E 00
+        LD C, 0		    ; Start counter with 0131 0E 00
                      	; 256
 LOOP3:  LD A, (DE)		; Set the value 0133 1A to ACC
                      	; to be represented in
                      	; 4 BYTES (int32_t)
-        ADD A, 128	; Subtract the level DC 0134 C6 80
-        JP P, PULA6	; If positive, zero BYTE 0136 F2 3D 01
+        ADD A, 128	    ; Subtract the level DC 0134 C6 80
+        JP P, PULA6	    ; If positive, zero BYTE 0136 F2 3D 01
                      	; most significant
         LD (HL), 0FFH	; If negative, put 0139 36 FF
                      	; FFh no BYTE more significant
         JR PULA7		; Jump 013B 18 02
-PULA6:  LD (HL), 0 	; Sero BYTE plus 013D 36 00
+PULA6:  LD (HL), 0 	    ; Sero BYTE plus 013D 36 00
                      	; significant
-PULA7:  DEC HL 		; Points HL to the 2nd 013F 2B
+PULA7:  DEC HL 		    ; Points HL to the 2nd 013F 2B
                      	; most significant BYTE
-        LD (HL), A	; Put the value in 2o 0140 77
+        LD (HL), A	    ; Put the value in 2o 0140 77
                      	; most significant BYTE
-        DEC HL 		; Zero to 3rd BYTE 0141 2B
+        DEC HL 		    ; Zero to 3rd BYTE 0141 2B
                      	; most significant
-
-;--------------------; 79 DEEL/UFRJ
-; The code   is responsible for allocating memory for and initializing the variables needed for the Fast Fourier Transform algorithm. The variables are K, K1, K2, and K3, which are all used in the algorithm. The code first allocates memory for these variables and then initializes them to the values needed for the algorithm.
-
-
-        DEC HL 		; Zero to BYTE minus 0142 2B
+                        ;
+        DEC HL 		    ; Zero to BYTE minus 0142 2B
                      	; significant ???
-        DEC HL 		; HL points to BYTE 0143 2B
+        DEC HL 		    ; HL points to BYTE 0143 2B
                      	; more significant than next point with
                      	; 4 BYTES (int32_t)
-        DEC DE 		; DE points to next 0144 1B
+        DEC DE 		    ; DE points to next 0144 1B
                      	; represented point per 1 BYTE
-        DEC C 		; Decrease counter 0145 0D
+        DEC C 		    ; Decrease counter 0145 0D
                      	; in ???
         JP NZ, LOOP3	; If it's not over, I'll be back 0146 C2 33 01
         LD A,(GM + 1)	; Put M in ACC 0149 3A 03 10
@@ -484,117 +547,109 @@ LOOP4:  LD (GK), A		; Save K 014C 32 06 10
                      	; then do
                      	; KI = 2 ^ (K - 1)
         LD B, A 		; Put K in B 014F 47
-        XOR A 		; Zero ACC 0150 AF
-        SCF			; CY = 1, (Carry) 0151 37
-LOOP5:  RLA 		; Rotation to 0152 17
+        XOR A 		    ; Zero ACC 0150 AF
+        SCF			    ; CY = 1, (Carry) 0151 37
+LOOP5:  RLA 		    ; Rotation to 0152 17
                      	; left through CY
-        DEC B 		; Decrease counter 0153 05
+        DEC B 		    ; Decrease counter 0153 05
                      	; in ???
         JP NZ, LOOP5	; If K1 <> 2 ^ (K - 1), 0154 C2 52 01
                      	; return
-        LD (GK1), A	; Save K1 0157 32 07 10
-        LD H, 0		; 015A 26 00
-        LD L, A		; K1 is in HL 015C 6F
-        ADD HL, HL 	; Makes K2 = 2 * K1 015D 29
-        DEC A 		; Makes K3 = K1 - 1 015E 3D
+        LD (GK1), A	    ; Save K1 0157 32 07 10
+        LD H, 0		    ; 015A 26 00
+        LD L, A		    ; K1 is in HL 015C 6F
+        ADD HL, HL 	    ; Makes K2 = 2 * K1 015D 29
+        DEC A 		    ; Makes K3 = K1 - 1 015E 3D
         LD (GK2), HL	; Save K2 015F 22 08 10
-        LD (GK3), A	; Save K3 0162 32 0A 10
-        XOR A 		; Starts P 0165 AF
-LOOP6:  LD (GP), A 	; Save P 0166 32 0B 10
+        LD (GK3), A	    ; Save K3 0162 32 0A 10
+        XOR A 		    ; Starts P 0165 AF
+LOOP6:  LD (GP), A 	    ; Save P 0166 32 0B 10
                      	; X = P
-
-
-
-;--------------------; 80 DEEL/UFRJ
-;  This code is responsible for calculating the sine and cosine of a given angle. It does this by using a lookup table, which it accesses using the angle's value as an index. The angle is first divided by two, then the cosine and sine of the resulting angle are looked up in the table. The results are then divided by two again and stored in the appropriate location.
-
-        LD BC, (GK)	; Recovers K 0169 ED 4B 06 10
+                        ;
+        LD BC, (GK)	    ; Recovers K 0169 ED 4B 06 10
                      	; Next do:
                      	; X = P / (2 * K1)
-LOOP7:  SRL A 		; X = X / 2 016D CB 3F
-        DEC C 		; Decreases K 016F 0D
+LOOP7:  SRL A 		    ; X = X / 2 016D CB 3F
+        DEC C 		    ; Decreases K 016F 0D
         JP NZ, LOOP7	; If X <> P / (2 * K1), 0170 C2 6D 01
                      	; return
-        RLA			; X = P / K1 0173 17
-        CALL BINV1 	; I represent X in BIT 0174 CD 32 03
+        RLA			    ; X = P / K1 0173 17
+        CALL BINV1 	    ; I represent X in BIT 0174 CD 32 03
                      	; inverse and do:
                      	; S = X * 256 / N for
                      	; search in the table sine. S esta' in HL
-        LD A, L		; 0177 7D
+        LD A, L		    ; 0177 7D
         LD (GS), A		; Save S 0178 32 0C 10
-        ADD HL, HL 	; Multiply S by 2 017B 29
+        ADD HL, HL 	    ; Multiply S by 2 017B 29
                      	; because the sine is represented with 2 BYTES
         EX DE, HL		; Put it in DE 017C EB
         LD HL, TABSEN	; HL points to 017D 21 80 06
                      	; start of table
-        ADD HL, DE 	; HL points to 0180 19
+        ADD HL, DE 	    ; HL points to 0180 19
                      	; sin (2*PI * Y/N)/ 2
         LD DE, Y1		; DE points to Y1 0181 11 0D 10
-        LDI			; Does: (Y1) = 0184 ED A0
-        LDI			; sin (2*PI * Y / N) / 2 0186 ED A0
+        LDI			    ; Does: (Y1) = 0184 ED A0
+        LDI			    ; sin (2*PI * Y / N) / 2 0186 ED A0
                      	; DE points to X1
         LD BC, 126		; The cosine is 128 0188 01 7E 00
-        ADD HL, BC	; BYTES after sine 018B 09
+        ADD HL, BC	    ; BYTES after sine 018B 09
                      	; cos (2*PI * Y/N)/ 2
-        LDI			; Does: (X1) = 018C ED A0
-        LDI			; cos (2*PI * Y / N) / 2 018E ED A0
+        LDI			    ; Does: (X1) = 018C ED A0
+        LDI			    ; cos (2*PI * Y / N) / 2 018E ED A0
                      	; DE points to ???
                      	; BC points to ???
-        LD A, 0FFH	; Starts J with 0 0190 3E FF
-LOOP8:  INC A 		; Next J 0192 3C
-        LD (GJ), A	; Save J 0193 32 11 10
-        LD HL, (GP)	; Recovers P 0196 2A 0B 10
+        LD A, 0FFH	    ; Starts J with 0 0190 3E FF
+LOOP8:  INC A 		    ; Next J 0192 3C
+        LD (GJ), A	    ; Save J 0193 32 11 10
+        LD HL, (GP)	    ; Recovers P 0196 2A 0B 10
         ADD A, L		; 0199 85
-        LD L, A		; Phaco K4 (J + P) 019A 6F
+        LD L, A		    ; Phaco K4 (J + P) 019A 6F
                      	; L register
-        XOR A 		; Zero ACC 019B AF
-        LD H, A		; Zero H, (J + P) < 256 019C 67
+        XOR A 		    ; Zero ACC 019B AF
+        LD H, A		    ; Zero H, (J + P) < 256 019C 67
         LD BC, AI		; BC points to 019D 01 00 08
                      	; first BYTE of vector A(I)
-        ADD HL, HL 	; Multiply J + P by 4 01A0 29
-        ADD HL, HL 	; because the representation 01A1 29
+        ADD HL, HL 	    ; Multiply J + P by 4 01A0 29
+        ADD HL, HL 	    ; because the representation 01A1 29
                      	; of A(I) and B(I) and' with 4 BYTES (int32_t)
-        ADD HL, BC	; HL points to BYTE 01A2 09
+        ADD HL, BC	    ; HL points to BYTE 01A2 09
                      	; less significant of A(K4)
         LD (AK4), HL	; Save Address of A(K4) 01A3 22 12 10
         EX DE, HL		; Put K4 in DE 01A6 EB
         LD HL, (GK1)	; Put K1 in L 01A7 2A 07 10
-        LD H, A		; Zero H 01AA 67
-        ADD HL, HL 	; Multiply J + P by 4 01AB 29
-        ADD HL, HL 	; because the representation 01AC 29
+        LD H, A		    ; Zero H 01AA 67
+        ADD HL, HL 	    ; Multiply J + P by 4 01AB 29
+        ADD HL, HL 	    ; because the representation 01AC 29
                      	; of A(I) and B(I) and' with 4 BYTES (int32_t)
-        ADD HL, DE 	; Phaco K5 = K4 + K1 01AD 19
+        ADD HL, DE 	    ; Phaco K5 = K4 + K1 01AD 19
                      	; HL points to A(K5)
-
-;--------------------; 82 DEEL/UFRJ
-; The code above is responsible for computing the value of C3, which is defined as A(K5) * sin (2 * PI * Y / N). The value of A(K5) is first loaded into the HL register, and then the value of the sin function is loaded into the BC register. Next, the ROT function is called to compute the value of C3. Finally, the value of C3 is stored in the DE register.
-
+                        ;
         LD (AK5), HL	; Save Address of A(K5) 01AE 22 14 10
-        LD BC, 1024	; The End of B(i) is 01B1 01 00 04
+        LD BC, 1024	    ; The End of B(i) is 01B1 01 00 04
                      	; 1024 BYTES above A(I)
-        ADD HL, BC	; HL points to B(K5) 01B4 09
+        ADD HL, BC	    ; HL points to B(K5) 01B4 09
         LD (BK5), HL	; Save Address of B(K5) 01B5 22 18 10
         EX DE, HL		; Put K4 on HL 01B8 EB
-        ADD HL, BC	; HL points to B(K4) 01B9 09
+        ADD HL, BC	    ; HL points to B(K4) 01B9 09
         LD (BK4), HL	; Save Address of B(K4) 01BA 22 16 10
-        LD DE, MULT	; address destination of 01BD 11 1A 10
+        LD DE, MULT	    ; address destination of 01BD 11 1A 10
                      	; multiplier in module and signal
         LD HL, (AK5)	; HL points to A(K5) 01C0 2A 14 10
                      	; in complement to 2
-        CALL COMP 	; Represents (A(K5) in 01C3 CD B0 03
+        CALL COMP 	    ; Represents (A(K5) in 01C3 CD B0 03
                      	; module and signal and put in (DE)
-        LD BC, (X1)	; Put 01C6 ED 4B 0F 10
+        LD BC, (X1)	    ; Put 01C6 ED 4B 0F 10
                      	; cos (2*PI * Y/N)/ 2
                      	; in BC, multiplying
         CALL ROT 		; Makes 01CA CD 70 03
                      	; C1 = cos(2*PI * Y/N)
                      	; and put the result in (MUL), in representation of module and signal
         LD DE, C1		; address destination 01CD 11 1E 10
-        LD HL, MUL	; address font 01D0 21 2E 10
-        CALL COMP 	; Make: 01D3 CD B0 03
+        LD HL, MUL	    ; address font 01D0 21 2E 10
+        CALL COMP 	    ; Make: 01D3 CD B0 03
                      	; (C1) = A(K5) * cos(2*PI * Y/N)
                      	; in representation 2's complement
-        LD BC, (Y1)	; sin (2 * PI * Y / N) 01D6 ED 4B 0D 10
+        LD BC, (Y1)	    ; sin (2 * PI * Y / N) 01D6 ED 4B 0D 10
                      	; to BC
         CALL ROT 		; Makes 01DA CD 70 03
                      	; A(K5) * sin (2 * PI * Y / N)
