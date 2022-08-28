@@ -1,0 +1,1477 @@
+
+;------------------------------------------------ -------------
+;
+; UFRJ_FCL_1984_Analisador_de_Espectro_por_FFT.z80
+;
+; Author: Fernando da Cunha Luiz
+;
+; 1984/1985
+;
+; Last revised: October 11, 2021, by the author
+;
+; Compiled in 2021 with: https://k1.spdns.de/cgi-bin/zasm.cgi
+; https://k1.spdns.de/Develop/Projects/zasm/Documentation/
+; https://clrhome.org/table/
+;
+; This software is part of the FFT Spectrum Analyzer,
+; developed by the author, to obtain the title of
+; Electronic Engineer at the Federal University of Rio de Janeiro
+; January, presented to the examiners on March 12, 1985.
+;
+; This code was rewritten in the year 2021. The original software
+; was compiled manually, with pencil and paper, with the help of
+; code table in Assembly Z80.
+; It was debugged on a Sinclair compatible Z80 microcomputer
+; ZX Spectrum.
+; The original code was recorded in the EPROM by typing the codes
+; in hexadecimal on an ASCII terminal connected to a recorder
+; EPROM with serial communication, developed at UFRJ, being
+; successful and worked as expected.
+; There may be some errors in retyping/translating the code
+; original. The pencil annotations of the original code, which was
+; recorded on EPROM, have been lost over time, more than 36 years
+; at the time. In this code there are notes where errors can occur.
+;
+;------------------------------------------------------ --------
+;
+; MEMORY MAPPING (HEXADECIMAL)
+;
+; 0000 to 07FF - 2KB EPROM 2716
+; 0800 to 0FFF - 2KB RAM 6116 (SIGNAL/RESULT SAMPLES)
+; 1000 to 13FF - 1KB RAM 2114 X 2 (STACK AND VARIABLES)
+; 1400 to 17FF - Reserved
+; 1800 to 1FFF - Free
+; 2000 to 27FF - Free
+; 2800 to 2FFF - Free
+; 3000 to 37FF - Free
+; 3800 to 3FFF - 7 Segment DISPLAY
+; 4000 to FFFF - Reserved, not decoded
+;
+;------------------------------------------------ -------------
+;--------------------; 67 DEEL/UFRJ
+;
+; APPENDIX 5
+;
+; MEMORY ADDRESSES (HEXADECIMAL)
+;
+; 0000 to 00FF - Start and stop routine
+;
+; 0100 to 067F - FFT Program
+;
+; 0680 to 07FF - table of sine and cosine multiplied by
+; 32767, (uint15_t), ([0o .. 270o)),
+; bit 15 represents the signal, end of EPROM
+;
+
+AI: EQU 0800H
+
+; 0800 to 0BFF - A(I) stored in the 4-byte representation
+; in 2's complement (int32_t)
+;
+; 0800 to 08FF - Area where the content of the
+; addresses 1080 to 117F or 1180 to 127F,
+; after calculating the FFT, the same as A(I)
+;
+
+ID: EQU 0C00H
+
+; 0C00 to 0BFF - B(I) stored in 4-byte representation
+; in 2's complement (int32_t)
+;
+
+MI16: EQU 0E00H
+
+; 0E00 to 0FFF - Area to store the spectrum in the representation
+; 16-bit module slot (uint16_t)
+;
+; 1000 to 107F - Variable area
+;
+; 1080 to 117F - Area to store the sampled signal from the
+; which the FFF was calculated, 256 Bytes (int8_t)
+;
+
+MI8: EQU 1180H
+
+; 1180 to 127F - Area to store the spectrum in the representation
+; 8-bit module slot (uint8_t)
+;
+
+MI: EQU 1180H
+
+; 1180 to 137F - Area used temporarily to store
+; the 16-bit module (uint16_t)
+;
+; 1380 - 13FF - Area for the "STACK POINTER"
+;
+
+
+DISPL: EQU 3800H 	; DISPLAY address, mapped in memory
+                      	; Renamed from DISP to DISPL
+
+
+;
+;------------------------------------------------ -------------
+;;--------------------; 68 DEEL/UFRJ
+;
+; APPENDIX 6
+;
+; THE FFT ASSEMBLY PROGRAM
+;
+; The program includes a "page" switch subroutine. Here-
+; of the page are 256 Bytes. As we have 8 pages (2048 Bytes) available
+; RAM levels for direct memory access, it's interesting
+; that each page can be shown separately, for greater re-
+; solution, especially when being used as memory
+; of oscilloscope. The subroutine rotates pages. eh ex-
+; cut through non-maskable CPU interrupt.
+;
+; The FFT calculation routine includes a subroutine that saves
+; the sampled signal that is in the first 256 addresses of RAM.
+; The FFT routine is executed through an interrupt, masking
+; ravel, from the CPU.
+;
+; After the FFT routine is executed, the rotation subroutine
+; Page dog is no longer executed. A subroutine is executed
+; which puts in the first 256 Bytes of RAM, sometimes the result of the
+; FFT, now the sampled signal, for each interrupt, is not masked.
+; vel, from the CPU.
+;
+; The FFT routine can be modified for the calculation with
+; fewer points, simply changing the instruction that
+; it is at address 0100H (LD A, 128).
+;
+; Ex.: To calculate the FFT with 128 points, the instruction
+; LD A, 128 should be replaced by LD A, 64.
+; The Instruction may still be replaced by an instruction
+; input. Ex.: IN A, (door).
+;
+; On the following pages is the commented listing of the program
+; in ASSEMBLY.
+;
+;------------------------------------------------ -------------
+;;--------------------; 71 DEEL/UFRJ
+;
+        ORG 0000H
+;
+
+; The code starts by loading the value 13FFH into the stack pointer,
+; which sets the end of RAM at address 0000H.
+; It then enables interrupts and sets the display to mode 1.
+; Next, it zeroes out the flag which indicates if the FFT was calculated and sets
+; the values of BC and DE to 127 and 801H respectively.
+; Finally, it loads the value A (which contains the value 255) into the content of address 0880H.
+
+START: LD SP, 13FFH 	; Last End of RAM 0000 31 FF 13
+                     	; to SP, RAM starts
+                     	; at address 0800H
+        IM 1 		; Select mode 1 of 0003 ED 56
+                     	; interruption
+        EI           	; Enable interrupt 0005 FB
+        LD A, 3FH	; Code to put zero 0006 3E 3F
+                     	; on DISPLAY
+        LD (DISPL), A	; Ascends DISPLAY c zero 0008 32 00 38
+        XOR A 		; Zero ACC 000B AF
+        LD (FLAG), A	; Zero FLAG which indicates 000C 32 60 10
+                     	; if the FFT was calculated
+        LD BC, 127	; qty of BYTES to be 000F 01 7F 00
+                     	; transferred
+        LD DE, 0801H	; address initial destination 0012 11 01 08
+        LD HL, 0800H	; address initial font 0015 21 00 08
+        LD (HL), A	; Zero for content of 0018 77
+	                ; address initial font
+        LDIR 		; Put zero in 0019 ED B0
+                     	; first 128 BYTES
+                     	; of RAM
+        CPL 		; 255 for the ACC 001B 2F
+        LD BC, 383	; qty of BYTES to be 001C 01 7F 01
+                     	; copied
+        LD DE, 0881H	; address initial destination 001F 11 81 08
+        LD HL, 0880H	; address initial font 0022 21 80 08
+        LD (HL), A	; 255 for content of 0025 77
+                     	; address initial font
+        LDIR 		; Put 255 in BYTES 0026 ED B0
+                     	; from 129 to 511 of RAM
+
+;--------------------; 72 DEEL/UFRJ
+; The code loads the value 128 into register A, loads the value 127 into registers BC,
+; loads the value 901 into register DE, loads the value 900 into register HL,
+; stores the value in register A at the address in register HL,
+; loads the value 255 into HL and DE, jumps to the label PULA1,
+; loads the value 9 into register A, stores the value in register A at the address PAG,
+; stores the value in register A at the address FLAG,
+; calls the subroutine FFT, and returns from the interrupt.
+
+
+        LD A, 128	; 128 for the ACC 0028 3E 80
+        LD BC, 127	; qty of BYTES to be 002A 01 7F 00
+                     	; copied
+        LD DE, 0901H	; address initial destination 002D 11 01 09
+        LD HL, 0900H	; address initial font 0030 21 00 09
+        LD (HL), A	; 128 for content of 0033 77
+                     	; address initial font
+        LDIR 		; Put 255 in BYTES 0034 ED B0
+                     	; from 129 to 511 of RAM
+        JR PULA1	; Continues in PULA1 0036 18 0D
+INT:    LD A,9 		; address relative of 0038 3E 09
+                     	; DISPLAY table + 1,
+                     	; letter a'
+        LD (PAG), A	; Guard End. relative 003A 32 61 10
+        LD (FLAG), A	; Activates FLAG 003D 32 60 10
+        CALL FFT 	; Executes FFT and lights up 0040 CD 00 01
+                     	; the DISPLAY with F at Final
+END: RETI 		; Return from interrupt 0043 ED 4D
+
+
+
+; The code loads the values in registers BC, DE, and HL. It then XORs register A and stores the result in HL.
+; LDIR is then used to put zeroes in all even-numbered bytes from 384-511 in RAM ;
+; and store the value 255 in all odd-numbered bytes.
+
+
+PULA1:  LD BC, 126	; qty of BYTES to be 0045 01 7E 00 copied
+        LD DE, 0982H	; address initial destination 0048 11 82 09
+        LD HL, 0980H	; address initial font 004B 21 80 09
+        XOR A 		; Zero ACC 004E AF
+        LD (HL), A	; 0980H contains zero and 004F 77 , 0981H contains 255
+        LDIR ; Put zero in BYTES 0050 ED B0
+                 	; pairs and 255 in BYTES odd from address 384 to 511 from RAM
+NOP 			; 0052 00
+			; The code is copying the contents of the first 512 bytes of RAM for the next 1536 bytes of RAM.
+         NOP 		; 0053 00
+         LD BC, 1536	; qty from BYTES to 0054 01 00 06  transfer, 6 pages
+         LD DE, 0A00h	; address initial destination 0057 11 00 0A
+         LD HL, 0800H	; address initial source 005A 21 00 08
+         LDIR 		; Copy the contents of the 005D ED B0
+                      	; first 512 BYTES of RAM for the next 1536 BYTES of RAM
+         XOR A 		; Zero ACC 005F AF
+         LD (PAG), A	; Zero End. relative of 0060 32 61 10 DISPLAY table
+				; The code stops the CPU and releases the hardware bus.
+				; After executing an interrupt, the code jumps back to the previous state.
+STOP: 	HALT 		; Stops the CPU and releases the 0063 76 hardware bus
+        JR STOP 	; After executing a 0064 18 FD interrupt back to previous state
+
+;--------------------;
+			; The code is checking if the flag is set to 0066 3A 60 10,
+			; and if it is, it will skip to the next section of code.
+			; Otherwise, it will exchange the first 8 pages of RAM and continue to the next section.
+NMI:    LD A, (FLAG)	; If FLAG other than 0066 3A 60 10
+                     	; zero the FFT is already gone calculated
+        OR A         	; Check if it was already 0069 B7
+                     	; calculated the FFT
+        JR NZ, 5	; If already calculated, skip 006A 20 05
+
+                     	; One page = 256 BYTES
+        CALL EXCHANGE8 	; Rotates 006C CD 7C 00
+                     	; first 8 pages of ram, carousel
+        JR 5	; 006F 18 03
+
+SKIP2:  CALL EXCHANGE2 	; Put the end. initial 0071 CD AB 00
+                     	; of RAM, the spectrum or the sampled signal
+SKIP3:  CALL DISPLAY 	; Indicates which page 0074 CD CD 00
+                     	; of RAM, it's on the page, zero or if it's
+	                ; spectrum or signal sampled from which it was calculated at FFT
+        CALL 00DAh    ; Call routine for 0077 CD DA 00
+      	                ; DEBOUNCE, wait
+            	        ; 426 milliseconds
+FIMNMI: RETN 	        ; End of NMI 007A ED 45
+
+;--------------------;
+; This code transfers 256 BYTES from the initial font location at 0800H to the initial destination at 1080H. It then transfers 1792 BYTES from the initial font location at 0900H to the initial destination at 0800H. Finally, it transfers 256 BYTES from the initial font location at 1080H to the initial destination at 0F00H. why
+
+
+; The code first loads the registers BC, DE, and HL with the values 256, 1080, and 0800 respectively. It then executes the LDIR instruction which saves the 256 BYTES of RAM page zero. Next, the code loads the registers BC, DE, and HL with the values 1792, 0800, and 0900 respectively. It then executes the LDIR instruction which shifts 1792 BYTES from pages 1 to 7 for the zero pages up to 6 of RAM. Finally, the code loads the registers BC, DE, and HL with the values 256, 0F00, and 1080 respectively. It then executes the LDIR instruction which puts the old page content zero on page 7 of RAM.
+
+
+EXCHANGE8: LD BC, 256 	; qty from BYTES to 007C 01 00 01
+                      	; transfer, 1 page
+        LD DE, 1080H	; address initial destination 007F 11 80 10
+        LD HL, 0800H	; address initial font 0082 21 00 08
+        LDIR 		; Saves the 256 BYTES of 0085 ED B0
+                     	; RAM page zero
+
+        LD BC, 1792	; qty from BYTES to 0087 01 00 07
+                     	; transfer, 7 pages
+        LD DE, 0800H	; address initial destination 008A 11 00 08
+        LD HL, 0900H	; address initial font 008D 21 00 09
+        LDIR 		; Shifts 1792 BYTES from 0090 ED B0
+                     	; pages 1 to 7 for the zero pages up to 6 of RAM
+        LD BC, 256		; qty from BYTES to 0092 01 00 01
+                     	; transfer, 1 page
+        LD DE, 0F00H 	; address initial destination 0095 11 00 0F
+        LD HL, 1080H	; address initial font 0098 21 80 10
+        LDIR 		; Put the old 009B ED B0 page content
+                     	; zero on page 7 of RAM
+        LD A, (PAG)	; address relative of 009D 3A 61 10
+                     	; DISPLAY table for ACC
+        INC A		; Next character of 00A0 3C
+                     	; DISPLAY
+        CP 8 		; Checks if the previous 00A1 FE 08
+                     	; it was End. relative of
+                     	; character '7'
+        JR NZ, PULA4	; If not, skip 00A3 20 02
+        LD A, 0		; If yes, then End. of 00A5 3E 00
+                     	; zero character for the ACC
+PULA4: LD (PAG), A	; Guard End. relative 00A7 32 61 10
+                     	; of the current character
+        RET			; End of exchange 00AA C9
+
+;--------------------;
+; The LD BC, 256 instruction loads the 16-bit values 00AB and 01 into the 16-bit register BC. The LD DE, 0800H instruction loads the 16-bit values 00AE and 11 into the 16-bit register DE. The LD A, (PAG) instruction loads the value stored at memory location PAG into register A. The INC A instruction increments the value in register A by 1. The CP 0AH instruction compares the value in register A with the value 0AH and sets the zero flag if they are equal. The JR NZ, PULA5 instruction jumps to the label PULA5 if the zero flag is not set. The LD A, 8 instruction loads the value 8 into register A. The LD (PAG), A instruction stores the value in register A at memory location PAG. The LD HL, 1080H instruction loads the 16-bit values 1080H into the 16-bit register HL. The LDIR instruction loads the value in register HL into register DE and then increments the values in HL and DE. The RET instruction returns from the current subroutine.
+; The PULA5 label is used to store the current character in memory. The LD (PAG), A instruction stores the value in register A at memory location PAG. The LD HL, 1180H instruction loads the 16-bit values 1180H into the 16-bit register HL. The LDIR instruction loads the value in register HL into register DE and then increments the values in HL and DE. The RET instruction returns from the current subroutine.
+
+EXCHANGE2: LD BC, 256 	; qty from BYTES to 00AB 01 00 01
+                     	; transfer, 1 page
+        LD DE, 0800H	; address initial destination, 00AE 11 00 08
+                     	; RAM page zero
+        LD A, (PAG)	; address relative of 00B1 3A 61 10
+                     	; DISPLAY table of last character
+                     	; shown
+        INC A		; Next character 00B4 3C
+        CP 0AH		; 00B5 FE 0A
+        JR NZ, PULA5	; If the preceding character 00B7 20 0B
+                     	; it was the letter 'A', jump
+        LD A, 8		; address relative of the letter 00B9 3E 08
+                     	; 'A' in the table of DISPLAY
+        LD (PAG), A	; Guard End. relative 00BB 32 61 10
+                     	; of the character to be shown on DISPLAY
+        LD HL, 1080H	; address initial of 00BE 21 80 10
+                     	; points used by FFT routine
+        LDIR 		; Copy to page 00C1 ED B0
+                     	; zero of RAM the sign of the which was calculated spectrum
+        RET			; 00C3 C9
+PULA5:  LD (PAG), A 	; Guard End. relative 00C4 32 61 10
+                     	; of the current character
+        LD HL, 1180H	; address initial of 00C7 21 80 11
+                     	; calculated spectrum
+        LDIR 		; Copy to page 00CA ED B0
+                     	; RAM zero the spectrum
+        RET			; 00CC C9
+
+
+
+;--------------------;
+; The code above displays a character on the screen and then waits for 426 milliseconds. The character is displayed by first loading the accumulator with the address of the character to be displayed. The HL register is then loaded with the address of the display table. The character code is then added to the accumulator and the result is stored in the HL register. The character code is then retrieved from the HL register and stored in the display register. Finally, the code waits for 426 milliseconds before returning.
+
+
+DISPLAY: LD A, (PAG)	; address relative of 00CD 3A 61 10
+                     	; character to be shown
+        LD HL, TDISP	; address from the start of 00D0 21 E3 00
+                     	; DISPLAY table
+        ADD A, L		; Accumulator points to 00D3 85
+                     	; the End of the character
+        LD L, A		; HL points to End. 00D4 6F
+                     	; of the character H = 0
+        LD A, (HL)	; Character code 00D5 7E
+                     	; to the Accumulator
+        LD (DISPL), A	; DISPLAY lights up with 00D6 32 00 38
+                     	; new character
+        RET			; 00D9 C9
+HOLD:   LD BC, 65535 	; Wait 00DA 01 FF FF
+                     	; 426 milliseconds to
+                     	; a 4 MHz clock
+LOOP1:  DEC BC 		; 00DD 0B
+        LD A, B		; 00DE 78
+        OR C 		; 00DF B1
+        JR NZ, LOOP1	; 00E0 20 FB
+        RET			; 00E2 C9
+
+;--------------------;
+      ; The following is the DISPLAY table:
+;
+TDISP:  DB 3FH 		; Code to light '0' 00E3 3F
+        DB 06H		; Code to light '1' 00E4 06
+        DB 5BH		; Code to light '2' 00E5 5B
+        DB 4FH		; Code to light '3' 00E6 4F
+        DB 66H		; Code to light '4' 00E7 66
+        DB 6DH		; Code to light '5' 00E8 6D
+        DB 7DH		; Code to light '6' 00E9 7D
+        DB 07H		; Code to light '7' 00EA 07
+        DB 77H		; Code to light 'A' 00EB 77
+        DB 71H		; Code to light 'F' 00EC 71
+        DS 13H		; Unused area 00ED FF FF FF FF
+                     	; 19 BYTES
+;--------------------;
+
+; Fast Fourier Transform Calculation
+
+; This code is for a Fast Fourier Transform calculation.
+; It loads the half the quantity of points into the ACC, and transfers it to HL.
+; It then finds the quantity of N points and keeps it in GN.
+; The next snippet calculates M = (LOG N) / LOG 2.
+; It zeroes HL and N/2 is in the ACC.
+; It then shifts the ACC to the right and returns to BIT = 0.
+; It puts M in GM + 1 and zeroes (GM) for the inverse bit.
+; It then transfers 256 bytes from AI to DE.
+
+FFT:    LD A, 128		; Put half the qty. 0100 3E 80
+                     	; of points in ACC
+        LD L, A		; 0102 6F
+        LD H, 0		; Transfer to HL 0103 26 00
+        ADD HL, HL 	; Find the qty. of 0105 29
+                     	; N points
+        LD (GN), HL	; I keep it in GN 0106 22 00 10
+                     	; the following snippet calculates:
+                     	; M = (LOG N) / LOG 2
+        LD HL, 0		; Zero HL 0109 21 00 00
+                     	; N/2 is in ACC
+LOOP2:  INC H 		; 010C 24
+        RRA 		; ACC SHIFT to 010D 1F
+                     	; right
+        JR NC, LOOP2	; Return to BIT = 0 010E 30 FC
+        LD (GM), HL	; Put M in GM + 1 and 0110 22 02 10
+                     	; zero (GM) for facilitate subroutines of inverse bit
+        LD BC, 256		; 0113 01 00 01
+        LD DE, 1080H	; address destination of 0116 11 80 10
+                     	; sampled points are on page zero of RAM
+        LD HL, AI		; address initial page 0119 21 00 08
+                     	; RAM zero
+        LDIR 		; Transfers 256 bytes 011C ED B0
+
+;--------------------; 78 DEEL/UFRJ
+
+; The LDBC, 2047 instruction loads the value 2047 into the C register. The purpose of this instruction is to reset the first 2 KBYTES of RAM. The LD DE, AI + 1 instruction loads the value AI + 1 into the DE register. The purpose of this instruction is to point DE to the last BYTE saved. The LD HL, AI instruction loads the value AI into the HL register. The purpose of this instruction is to point HL to the last BYTE of the real part. The LD (HL), 0 instruction loads the value 0 into the HL register. The purpose of this instruction is to reset the first BYTE of RAM. The LDIR instruction zero plus 2047 BYTES. The purpose of this instruction is to zero the first 2 KBYTES of RAM. The LD DE, 117FH instruction loads the value 117FH into the DE register. The purpose of this instruction is to point DE to the last BYTE saved. The LD HL,AI+1023 instruction loads the value AI+1023 into the HL register. The purpose of this instruction is to point HL to the last BYTE of the real part. The LD C, 0 instruction loads the value 0 into the C register. The purpose of this instruction is to start the counter with 256. The LOOP3: LD A, (DE) instruction loads the value (DE) into the A register. The purpose of this instruction is to set the value to ACC to be represented in 4 BYTES (int32_t). The ADD A, 128 instruction adds the value 128 to the A register. The purpose of this instruction is to subtract the level DC 0134 C6 80. The JP P, PULA6 instruction jumps to the PULA6 label if the value in the P register is positive. The purpose of this instruction is to zero the BYTE most significant. The LD (HL), 0FFH instruction loads the value 0FFH into the HL register. The purpose of this instruction is to put FFh no BYTE more significant. The JR PULA7 instruction jumps to the PULA7 label. The purpose of this instruction is to jump to the PULA7 label. The PULA6: LD (HL), 0 instruction loads the value 0 into the HL register. The purpose of this instruction is to zero the BYTE most significant. The PULA7: DEC HL instruction decrements the value in the HL register. The purpose of this instruction is to point HL to the 2nd most significant BYTE. The LD (HL), A instruction loads the value in the A register into the HL register. The purpose of this instruction is to put the value in the 2o most significant BYTE. The DEC HL instruction decrements the value in the HL register. The purpose of this instruction is to point HL to the 3rd most significant BYTE.
+
+        LD BC, 2047	; Objective is to reset the 011E 01 FF 07
+                     	; first 2 KBYTES of RAM
+        LD DE, AI + 1	; 0121 11 01 08
+                     	;
+        LD HL, AI		; 0124 21 00 08
+                     	;
+        LD (HL), 0 	; Resets first BYTE of 0127 36 00
+                     	; RAM
+        LDIR 		; Zero plus 2047 BYTES 0129 ED B0
+                     	;
+        LD DE, 117FH	; DE points to last 012B 11 7F 11
+                     	; BYTE saved
+        LD HL,AI+1023	; HL points to last 012E 21 FF 0B
+                     	; BYTE of the real part
+        LD C, 0		; Start counter with 0131 0E 00
+                     	; 256
+LOOP3:  LD A, (DE)		; Set the value 0133 1A to ACC
+                     	; to be represented in
+                     	; 4 BYTES (int32_t)
+        ADD A, 128	; Subtract the level DC 0134 C6 80
+        JP P, PULA6	; If positive, zero BYTE 0136 F2 3D 01
+                     	; most significant
+        LD (HL), 0FFH	; If negative, put 0139 36 FF
+                     	; FFh no BYTE more significant
+        JR PULA7		; Jump 013B 18 02
+PULA6:  LD (HL), 0 	; Sero BYTE plus 013D 36 00
+                     	; significant
+PULA7:  DEC HL 		; Points HL to the 2nd 013F 2B
+                     	; most significant BYTE
+        LD (HL), A	; Put the value in 2o 0140 77
+                     	; most significant BYTE
+        DEC HL 		; Zero to 3rd BYTE 0141 2B
+                     	; most significant
+
+;--------------------; 79 DEEL/UFRJ
+; The code   is responsible for allocating memory for and initializing the variables needed for the Fast Fourier Transform algorithm. The variables are K, K1, K2, and K3, which are all used in the algorithm. The code first allocates memory for these variables and then initializes them to the values needed for the algorithm.
+
+
+        DEC HL 		; Zero to BYTE minus 0142 2B
+                     	; significant ???
+        DEC HL 		; HL points to BYTE 0143 2B
+                     	; more significant than next point with
+                     	; 4 BYTES (int32_t)
+        DEC DE 		; DE points to next 0144 1B
+                     	; represented point per 1 BYTE
+        DEC C 		; Decrease counter 0145 0D
+                     	; in ???
+        JP NZ, LOOP3	; If it's not over, I'll be back 0146 C2 33 01
+        LD A,(GM + 1)	; Put M in ACC 0149 3A 03 10
+LOOP4:  LD (GK), A		; Save K 014C 32 06 10
+                     	; then do
+                     	; KI = 2 ^ (K - 1)
+        LD B, A 		; Put K in B 014F 47
+        XOR A 		; Zero ACC 0150 AF
+        SCF			; CY = 1, (Carry) 0151 37
+LOOP5:  RLA 		; Rotation to 0152 17
+                     	; left through CY
+        DEC B 		; Decrease counter 0153 05
+                     	; in ???
+        JP NZ, LOOP5	; If K1 <> 2 ^ (K - 1), 0154 C2 52 01
+                     	; return
+        LD (GK1), A	; Save K1 0157 32 07 10
+        LD H, 0		; 015A 26 00
+        LD L, A		; K1 is in HL 015C 6F
+        ADD HL, HL 	; Makes K2 = 2 * K1 015D 29
+        DEC A 		; Makes K3 = K1 - 1 015E 3D
+        LD (GK2), HL	; Save K2 015F 22 08 10
+        LD (GK3), A	; Save K3 0162 32 0A 10
+        XOR A 		; Starts P 0165 AF
+LOOP6:  LD (GP), A 	; Save P 0166 32 0B 10
+                     	; X = P
+
+
+
+;--------------------; 80 DEEL/UFRJ
+;  This code is responsible for calculating the sine and cosine of a given angle. It does this by using a lookup table, which it accesses using the angle's value as an index. The angle is first divided by two, then the cosine and sine of the resulting angle are looked up in the table. The results are then divided by two again and stored in the appropriate location.
+
+        LD BC, (GK)	; Recovers K 0169 ED 4B 06 10
+                     	; Next do:
+                     	; X = P / (2 * K1)
+LOOP7:  SRL A 		; X = X / 2 016D CB 3F
+        DEC C 		; Decreases K 016F 0D
+        JP NZ, LOOP7	; If X <> P / (2 * K1), 0170 C2 6D 01
+                     	; return
+        RLA			; X = P / K1 0173 17
+        CALL BINV1 	; I represent X in BIT 0174 CD 32 03
+                     	; inverse and do:
+                     	; S = X * 256 / N for
+                     	; search in the table sine. S esta' in HL
+        LD A, L		; 0177 7D
+        LD (GS), A		; Save S 0178 32 0C 10
+        ADD HL, HL 	; Multiply S by 2 017B 29
+                     	; because the sine is represented with 2 BYTES
+        EX DE, HL		; Put it in DE 017C EB
+        LD HL, TABSEN	; HL points to 017D 21 80 06
+                     	; start of table
+        ADD HL, DE 	; HL points to 0180 19
+                     	; sin (2*PI * Y/N)/ 2
+        LD DE, Y1		; DE points to Y1 0181 11 0D 10
+        LDI			; Does: (Y1) = 0184 ED A0
+        LDI			; sin (2*PI * Y / N) / 2 0186 ED A0
+                     	; DE points to X1
+        LD BC, 126		; The cosine is 128 0188 01 7E 00
+        ADD HL, BC	; BYTES after sine 018B 09
+                     	; cos (2*PI * Y/N)/ 2
+        LDI			; Does: (X1) = 018C ED A0
+        LDI			; cos (2*PI * Y / N) / 2 018E ED A0
+                     	; DE points to ???
+                     	; BC points to ???
+        LD A, 0FFH	; Starts J with 0 0190 3E FF
+LOOP8:  INC A 		; Next J 0192 3C
+        LD (GJ), A	; Save J 0193 32 11 10
+        LD HL, (GP)	; Recovers P 0196 2A 0B 10
+        ADD A, L		; 0199 85
+        LD L, A		; Phaco K4 (J + P) 019A 6F
+                     	; L register
+        XOR A 		; Zero ACC 019B AF
+        LD H, A		; Zero H, (J + P) < 256 019C 67
+        LD BC, AI		; BC points to 019D 01 00 08
+                     	; first BYTE of vector A(I)
+        ADD HL, HL 	; Multiply J + P by 4 01A0 29
+        ADD HL, HL 	; because the representation 01A1 29
+                     	; of A(I) and B(I) and' with 4 BYTES (int32_t)
+        ADD HL, BC	; HL points to BYTE 01A2 09
+                     	; less significant of A(K4)
+        LD (AK4), HL	; Save Address of A(K4) 01A3 22 12 10
+        EX DE, HL		; Put K4 in DE 01A6 EB
+        LD HL, (GK1)	; Put K1 in L 01A7 2A 07 10
+        LD H, A		; Zero H 01AA 67
+        ADD HL, HL 	; Multiply J + P by 4 01AB 29
+        ADD HL, HL 	; because the representation 01AC 29
+                     	; of A(I) and B(I) and' with 4 BYTES (int32_t)
+        ADD HL, DE 	; Phaco K5 = K4 + K1 01AD 19
+                     	; HL points to A(K5)
+
+;--------------------; 82 DEEL/UFRJ
+; The code above is responsible for computing the value of C3, which is defined as A(K5) * sin (2 * PI * Y / N). The value of A(K5) is first loaded into the HL register, and then the value of the sin function is loaded into the BC register. Next, the ROT function is called to compute the value of C3. Finally, the value of C3 is stored in the DE register.
+
+        LD (AK5), HL	; Save Address of A(K5) 01AE 22 14 10
+        LD BC, 1024	; The End of B(i) is 01B1 01 00 04
+                     	; 1024 BYTES above A(I)
+        ADD HL, BC	; HL points to B(K5) 01B4 09
+        LD (BK5), HL	; Save Address of B(K5) 01B5 22 18 10
+        EX DE, HL		; Put K4 on HL 01B8 EB
+        ADD HL, BC	; HL points to B(K4) 01B9 09
+        LD (BK4), HL	; Save Address of B(K4) 01BA 22 16 10
+        LD DE, MULT	; address destination of 01BD 11 1A 10
+                     	; multiplier in module and signal
+        LD HL, (AK5)	; HL points to A(K5) 01C0 2A 14 10
+                     	; in complement to 2
+        CALL COMP 	; Represents (A(K5) in 01C3 CD B0 03
+                     	; module and signal and put in (DE)
+        LD BC, (X1)	; Put 01C6 ED 4B 0F 10
+                     	; cos (2*PI * Y/N)/ 2
+                     	; in BC, multiplying
+        CALL ROT 		; Makes 01CA CD 70 03
+                     	; C1 = cos(2*PI * Y/N)
+                     	; and put the result in (MUL), in representation of module and signal
+        LD DE, C1		; address destination 01CD 11 1E 10
+        LD HL, MUL	; address font 01D0 21 2E 10
+        CALL COMP 	; Make: 01D3 CD B0 03
+                     	; (C1) = A(K5) * cos(2*PI * Y/N)
+                     	; in representation 2's complement
+        LD BC, (Y1)	; sin (2 * PI * Y / N) 01D6 ED 4B 0D 10
+                     	; to BC
+        CALL ROT 		; Makes 01DA CD 70 03
+                     	; A(K5) * sin (2 * PI * Y / N)
+                     	; and put the result in (MUL), in representation of module and signal
+        LD DE, C3		; address destination 01DD 11 26 10
+
+
+;--------------------; 83 DEEL/UFRJ
+; This is the code for the Fast Fourier Transform (FFT) algorithm. The FFT is an algorithm that is used to compute the discrete Fourier transform (DFT) of a signal. The FFT is a computationally efficient way to compute the DFT. The time complexity of the FFT is O(n log n), where n is the length of the signal. The code snippet above is a function that calculates the Fast Fourier Transform (FFT) of a given signal. The FFT is a way to mathematically analyze a signal in order to extract its component frequencies. This function first loads the source signal into registers HL and DE. It then calls a COMP function to calculate the product of the source signal and the sine wave. The product is then stored in the C2 register. The code then does the same for the cosine wave and stores the product in the C4 register. Next, the code calculates the sum of the C2 and C4 registers and stores it in the X2 register. The code then calculates the difference of the C2 and C4 registers and stores it in the Y2 register. Finally, the code calculates the FFT of the signal by adding the X2 and Y2 registers and storing the result in the AK5 and BK5 registers.
+
+
+
+        LD HL, MUL	; address source 01E0 21 2E 10
+        CALL COMP 	; Make: 01E3 CD B0 03
+                     	; (C3) = A(K5) * sin (2 * PI * Y / N)
+                     	; in representation 2's complement
+        LD DE, MULT	; address destination of 01E6 11 1A 10
+                     	; multiplier in module and signal
+        LD HL, (BK5)	; HL points to B(K5) 01E9 2A 18 10
+                     	; in representation 2's complement
+        CALL COMP 	; Represents B(K5) in 01EC CD B0 03
+                     	; module and signal and put in (MULT)
+        LD BC, (Y1)	; sin (2 * PI * Y / N) 01EF ED 4B 0D 10
+                     	; to BC
+        CALL ROT 		; Make: B(K5) * 01F3 CD 70 03
+                     	; sin ( 2 * PI * Y / N)
+                     	; in representation 2's complement
+        LD DE, C2		; address destination 01F6 11 22 10
+        LD HL, MUL	; address font 01F9 21 2E 10
+        CALL COMP 	; Make: 01FC CD B0 03
+                     	; (C2) = B(K5) * sin (2 * PI * Y / N)
+                     	; in complement to 2
+        LD BC, (X1)	; Make: BC * 01FF ED 4B 0F 10
+                     	; cos ( 2 * PI * Y / N)
+        CALL ROT 		; Make: B(K5) * 0203 CD 70 03
+                     	; cos ( 2 * PI * Y / N)
+        LD DE, C4		; address destination 0206 11 2A 10
+        LD HL, MUL	; address source 0209 21 2E 10
+        CALL COMP 	; Does: (C4) = B(K5) * 020C CD B0 03
+                     	; cos ( 2 * PI * Y / N)
+                     	; in complement to 2
+        LD IX, X2		; End of result of 020F DD 21 32 10
+                     	; sum
+        LD HL, C1		; address of an installment 0213 21 1E 10
+        LD DE, C2		; address another installment 0216 11 22 10
+        CALL 0310h	; Make: (X2) = (C1) + C2) 0219 CD 10 03
+        LD IX, Y2		; address of the result of 021C DD 21 36 10
+                     	; subtraction
+        LD HL, C3		; address from the subtrahend 0220 21 26 10
+        LD DE, C4		; address of the minute 0223 11 2A 10
+        CALL 0x0321     ;MINUS 	; Does: (Y2) = -(C3)+(C4) 0226 CD 21 03
+        LD IX, (AK5)	; address of the result of 0229 DD 2A 14 10
+                     	; subtraction
+        LD DE, (AK4) 	;End. of (AK4), minuend 022D ED 5B 12 10
+        LD HL, X2		; address from the subtrahend 0231 21 32 10
+        CALL 0x0321     ;MINUS 	; Make: A(K5) = A(K4) -X2 0234 CD 21 03
+        LD IX, (BK5)	; address of the result of 0237 DD 2A 18 10
+                     	; subtraction
+        LD DE, (BK4) 	;End. of B(K4), minuend 023B ED 5B 16 10
+        LD HL, Y2		; address from the subtrahend 023F 21 36 10
+        CALL 0x0321     ;MINUS 	; Make: B(K5)= B(K4) - Y2 0242 CD 21 03
+        LD IX, (AK4)	; address of the sum 0245 DD 2A 12 10
+        LD DE, (X2)	    ; address of a parcel 0249 ED 5B 12 10 Error?
+        LD HL, (AK4)	; address from another parcel 024D 21 32 10 Error?
+        CALL 0x0310     ; MORE 	    ; Make: A(K4)= A(K4) + X2 0250 CD 10 03
+        LD IX, (BK4)	; address of the sum 0253 DD 2A 16 10
+        LD DE, (Y2)	    ; address of a parcel 0257 ED 5B 16 10 Error?
+        LD HL, (BK4)	; address from another installment 025B 21 36 10 Error?
+        CALL 0x0310     ; MORE 	    ; Make: B(K4)= B(K4) + Y2 025E CD 10 03
+        LD A, (GJ)	    ; Recovers J 0261 3A 11 10
+        LD HL, (GK3)	; address of K3 in HL 0264 21 0A 10 Error?
+        CP (HL)		    ; Checks if J = K3 0267 BE
+        JP NZ, LOOP8	; Otherwise come back 0268 C2 92 01
+        LD A, (GP)	    ; Recovers P 026B 3A 0B 10
+        LD D, 0		    ; 026E 16 00
+        LD E, A 		; Place P em DE 0270 5F
+        LD HL, (GK2)	; Place step em HL, K2 0271 2A 08 10
+        ADD HL, DE 	    ; Next J 0274 19
+        LD BC, (GN) 	; N for BC 0275 ED 4B 00 10
+        LD A, L 		; J em ACC 0279 7D
+        CP C 		    ; Compare J with N 027A B9
+        JP NZ, LOOP6	; If J < (N - 1), volta 027B C2 66 01
+        LD A, (GK) 	    ; Retrieve K 027E 3A 06 10
+        DEC A 		    ; K = K - 1 0281 3D
+        JP NZ, LOOP4	; If K <> 0, turns 0282 C2 4C 01
+        LD A, 1 		; Initialize I 0285 3E 01
+LOOP9:  LD (GI), A 	    ; Save I 0287 32 3A 10
+        CALL BINV2 	    ; I represent in BIT 028A CD 37 03
+                     	; inverse os M BITS less significant, S this 'em HL
+        LD A, (GI) 	    ; Retrieve I 028D 3A 3A 10
+        CP L 		    ; Compare I with S 0290 BD
+        JP NC, 0x02EC   ; PULA8	; If I > S, pull 0291 D2 EC 02
+        ADD HL, HL 	    ; S = 4 * s because A(S) 0294 29
+        ADD HL, HL 	    ; B(S) sao 4 BYTES 0295 29
+        LD BC, AI		; End. first BYTE 0296 01 00 08
+	             	    ; from A(0)
+        LD DE, 1024 	; B(0) is' 1024 BYTES 0299 ??11 00 04
+                     	; depois
+        ADD HL, BC	; HL bets for A(S) 029C 09
+        LD (GAS), HL	; Save End. from A(S) 029D 22 3B 10
+        ADD HL, DE 	; HL bets for B(S) 02A0 19
+        LD (GBS), HL 	; Save End. from B(S) 02A1 22 3D 10
+        LD H, 0 		; Place I em HL 02A4 26 00
+        LD L, A 		; 02A6 6F
+        ADD HL, HL 	; S = 4 * s because A(S) 02A7 29
+        ADD HL, HL 	; B(S) sao 4 BYTES 02A8 29
+        ADD HL, BC	; HL bets for A(I) 02A9 09
+        LD (GAI), HL 	; Save End. from A(I) 02AA 22 3F 10
+        ADD HL, DE 	; HL bets for B(I) 02AD 19
+        LD (GBI), HL 	; Save End. from B(I) 02AE 22 41 10
+        LD BC, 4		; Qtd. BYTES to 02B1 01 04 00
+                     	; to transfer
+        LD DE, X3 	; End. destination 02B4 11 43 10
+        LD HL, (GAI) 	; End. font 02B7 2A 3F 10
+        LDIR 		; Face: X3 = A(I) 02BA ED B0
+        LD C, 4 		; Qtd. BYTES to 02BC 0E 04
+                     	; to transfer
+        LD HL, (GBI) 	; End. source 02BE 2A 41 10
+                     	; DE bets for End.
+                     	; fate y3
+        LDIR 		; Face Y3 = (BI) 02C1 ED B0
+        LD C, 4 		; Qtd. BYTES to 02C3 0E 04
+                     	; to transfer
+        LD DE, (GAI) 	; End. destination 02C5 DI 5B 3F 10
+        LD HL, (GAS) 	; End. font 02C9 2A 3B 10
+        LDIR 		; Face: A(I) = A(S) 02CC ED B0
+        LD C, 4 		; Qtd. BYTES to 02CE 0E 04
+                     	; to transfer
+        LD DE, (GBI) 	; End. destination 02D0 DI 5B 41 10
+        LD HL, (GBS) 	; End. font 02D4 2A 3D 10
+        LDIR 		; Face: B(I) = B(S) 02D7 ED B0
+        LD C, 4 		; Qtd. BYTES to 02D9 0E 04
+                     	; to transfer
+        LD DE, (GAS) 	; End. destination 02DB D1 5B 3B 10
+        LD HL, (X3) 	; End. font 02DF 21 43 10 Error?
+        LDIR 		; Phase: A(S) = X3 02E2 ED B0
+        LD C, 4		; Qtd. from BYTES to 02E4 0E 04
+                     	; transfer
+        LD DE, (GBS) 	; End. destination, 02E6 ED 5B 3D
+                     	; End. fonts in HL, Y3
+        LDIR 		; Phase: B(S) = Y3 02EA ED B0
+RED8:   LD A, (GI) 	; Recover I 02EC 3A 3A 10
+        INC A 		; Proximity I 02EF 3C
+        LD HL, GN 	; End. of N 02F0
+        CP (HL) 		; Compare I with BYTE 02F3 BE
+                     	; less significant of N
+        JP NZ , LOOP9 	; If I <> N, turns 02F4 C2
+        CALL MODULE 	; Phase: M(0) = A(0) N and 02F7 CD3004
+                     	; N(I) = 2* sqr ( A ( I ) ^ 2 + B ( I ) ^ 2 ) / N
+                     	; for I = 1 to N-1 com
+                     	; 16 BITS
+        CALL TRANSF 	; Represents M(I) with 02FA CD D4
+                     	; 8 BITS rounding e
+                     	; transfer for MI8 e
+                     	; tambem p/ page zero of RAM.
+				; Turns on DISPLAY
+                     	; com 'F'
+        RET 		; Movie the FFT 02FD C9
+        DS 12H 		; Area used 02FE FF FF FF FF
+                     	; 18 BYTES
+CORN: LD C, 4 		; Qtd. of BYTES to 0310 0E 04
+                     	; transfer
+        OR A 		; Zero Carry 0312 B7
+LOOP10: LD A, (DE)	; BYTE of 1st plot 0313 1A
+        ADC A, (HL)	; Send with BYTE to 0314 8E
+                     	; second plot and com
+                     	; Previous carry
+        LD (IX+0), A	; Keep the sum in (IX) 0315 DD
+
+;-------------------; 88 DEEL/UFRJ
+;
+        INC DE 		; Next BYTE give 1a 0318 13
+                     	; parcel
+        INC HL		; Next BYTE give 2a 0319 23
+                     	; parcel
+        INC ix		; Next BYTE give soma 031A DD 23
+        DEC c		; Decrements contador 031C 0D
+        JP NZ, LOOP10	; If not finished, come back 031D C2 13 03
+        RET 		; end of sum 0320 C9
+				; does: (IX)= (DE) - (HL) com 4 BYTES
+;
+;
+MENOS: LD C, 4		; Qty. of BYTES from 0321 0E 04
+                     	; transfer
+        OR A		; Zero Carry 0323 B7
+LOOP11: LD A, (DE) 	; Decreasing 0324 1A
+        SBC A, (HL) 	; Decreasing - Subtracting 0325 9E
+                     	; - Carry forward
+        LD (9 +0), A	; Save the sum in (IX) 0326 DD 77 00
+        INC DE 		; Next BYTE do 0329 13
+                     	; reducing
+        INC HL		; Next BYTE do 032A 23
+                     	; subtracting
+        INC IX		; Next BYTE give 032B DD 23
+                     	; difference
+        DEC C		; Decrements contador 032D 0D
+        JP NZ, LOOP11	; If not finished, come back 032E C2 24 03
+        RET 		; We subtract 0331 C9
+
+;-------------------;
+; This code is inverting the 8 bits in H and then jumping to loop12.
+; In loop12, it is inverting the M bits in HL and then jumping to GM.
+
+BINV1: LD H, 8 		; To invert the 8 bits 0332 26 08
+        JP LOOP12		; Anyway 0334 C3 3A 03
+				;
+BINV2: LD HL, (GM) 	; To invert the M bits 0337 2A 02 10
+                     	; less significant
+                     	; M esta' em H
+LOOP12: RRCA 		; BIT least significant 033A 0F
+                     	; p/Carry
+
+;-------------------; 89 DEEL/UFRJ
+; It is a loop that decrements the value in the H register until it reaches 0.
+
+        RL L 		; Caeey CY p/ BIT menos 033B CB 15
+                     	; significant
+        DEC H 		; Counter decrements 033D 25
+                     	; BITS
+        JP NZ, LOOP12	; If not finished, come back 033E C2 3A 03
+        RET 		; Finally, H = 0 e L com S 0341 C9
+
+;-------------------;
+; Multiply BC by DE and put the
+; result in DEHL, does not change BC
+; This code multiplies the 16-bit number in the BC register by the 16-bit number in the DE register,
+; and stores the result in the DEHL register.
+
+
+
+MULTIP: LD A, 16		; qty 0342 3E 10 BITS
+                     	; multiplying and from multiplier
+        LD HL, 0		; Zero HL 0344 21 00 00
+LOOP13: ADD HL, HL 	; Fold HL 0347 29
+        EX DE, HL		; 0348 EB
+        ADC HL, HL	; 0349 ED 6A
+        EX DE, HL		; 2 times DE + CY of HL 034B EB
+        JP NC, PULA9	; Continue if no CY 034C D2 54 03
+        ADD HL, BC	; Sum by multiplying 034F 09
+        JP NC, PULA9	; If not CY, skip 0350 D2 54 03
+        INC DE 		; DE + CY 0353 13
+PULA9: DEC A 		; Decrease counter 0354 3D
+        JP NZ, LOOP13	; If not finished, return 0355 C2 47 03
+        RET			; End of multiplication 0358 C9
+
+;--------------------;
+
+        ; Divide HLDE by BC, quotient in DE and remainder in HL, does not change BC
+
+DIVIDE: LD A, 16 		; 0359 3E 10
+LOOP14: EX DE, HL 	; 035B EB
+        ADD HL, HL 	; 035C 29
+        EX DE, HL		; 035D EB
+        ADC HL, HL	; 035E ED 6A
+
+;--------------------; 90 DEEL/UFRJ
+
+        OR A         	; Cleaner CY 0360 B7
+        SBC HL, BC	; Subtract the divisor 0361 ED 42
+        JP P, PULA10	; If positive, skip 0363 F2 68 03
+        ADD HL, BC	; Divisor sum 0366 09
+        DEC DE 		; Decrement DE 0367 1B
+PULA10: INC DE 		; Increment DE 0368 13
+        DEC A 		; Decrease counter 0369 3D
+        JP NZ, LOOP14	; If not finished, return 036A C2 5B 03
+        RET		; End of division 036D C9
+
+;--------------------;
+        DS 2 ; Unused area 036E FF FF
+                     ; 2 BYTES
+;--------------------;
+
+; Multiply BC by (MULT), 4 BYTES giving a result with 6 BYTES,
+; despising the 2 less significant and keeping the result in (MUL), with 4 BYTES
+; This code is a multiplication routine that multiplies two numbers and stores the result in memory.
+; The code first saves the signal from the multiplier in the ACC bit 7,
+; then multiplies the number in C by the number in B and stores the result in B.
+; It then calls the multiply routine, which multiplies the number in BC by the number in DE and stores the result in DEHL.
+; The code then stores the 2 BYTES minus significant of the product in memory,
+; then the 2 BYTES plus significant of the product. The code then sums the 2 BYTES of multiplications and stores the result in memory.
+; The code then checks if there was a carry from the sum, and if so, increments the 2 BYTES more significant than the product.
+; The code then pops the signal from the product and checks if it is positive.
+; If it is not positive, the code sets the most significant bit by the BYTE more significant of the product.
+; The code then saves the 2 BYTES plus significant of the product in memory and returns.
+
+
+
+ROT: LD A, B 		; 0370 78
+        PUSH AF 		; Save 0371 F5 signal
+                     	; multiplying, bit 7
+                     	; of ACC
+        SLA C 		; 0372 CB 21
+        RL B 		; Recovers 0374 CB 10 module
+                     	; sine or cosine
+        LD DE, (MULT)	; The 2 BYTES minus 0376 ED 5B 1A 10
+                     	; significant of
+                     	; multiplier
+        CALL MULTIP 	; Multiply BC by DE and 037A CD 42 03
+                     	; put the result in
+                     	; DEHL
+        LD (MUL), DE 	; Stores 2 BYTES minus 037D ED 53 2E 10
+                     	; significant of
+                     	; product
+        LD DE,(MULT+2)	; 2 BYTES plus 0381 ED 5B 1C 10
+                     	; significant of
+                     	; multiplier
+        POP AF 		; Recovers signal from 0385 F1
+                     	; multiplier in
+                     	; ACC BIT 7
+        XOR D 		; Put it in the FLAG of 0386 AA
+                     	; sign the sign of
+                     	; product
+        PUSH AF 		; Save product signal 0387 F5
+        RES 7, D		; Makes multiplier 0388 CB BA
+                     	; positive
+        CALL MULTIP 	; Multiply BC by DE and 038A CD 42 03
+                     	; put the result in
+                     	; DEHL
+        LD (MUL+2),DE	; Saves 2 BYTES plus 038D ED 53 30 10
+                     	; significant of
+                     	; product
+        LD DE, (MUL)	; Recovers 2 BYTES from 0391 ED 5B 2E 10
+                     	; multiplication
+                     	; previous
+        ADD HL, DE 	; Sum 2 BYTES of 0395 19
+                     	; multiplications
+        LD (MUL), HL	; Save 2 BYTES minus 0396 22 2E 10
+                     	; significant of
+                     	; product
+        LD HL,(MUL+2)	; Recovers 2 BYTES plus 0399 2A 30 10
+                     	; significant of
+                     	; product
+        JP NC, PULA11	; If there was no Carry of the 039C D2 A0 03
+                     	; sum, jump
+        INC HL		; Having Carry, 039F 23
+                     	; increment 2 BYTES
+                     	; more significant than
+                     	; product
+PULA11: POP AF 		; Recovers signal from 03A0 F1
+                     	; product
+        JP P, PULA12	; If positive, skip 03A1 F2 A6 03
+        SET 7, H		; If negative, set the 03A4 CB FC
+                     	; most significant bit
+                     	; by BYTE more
+                     	; significant of
+                     	; product
+PULA12: LD (MUL+2),HL	; Saves 2 BYTES plus 03A6 22 30 10
+                     	; significant of
+                     	; product
+        RET			; The end. The product if 03A9 C9
+                     	; find in DEHL
+                     	; represented in
+                     	; module and signal
+
+;--------------------;
+        DS 6 ; Unused area 03AA FF FF FF FF
+                     ; 6 BYTES
+;--------------------;
+
+; Represents a num. of 03B0 4 BYTES
+; initially in module and signal or vice versa
+; The code is a function that takes two parameters: an address and a quantity in bytes,
+; and returns the complement of the number stored at that address.
+; The code is intended to convert a number from two's complement form to its absolute value.
+; However, there are a few errors in the code which may prevent it from running as intended.
+; Specifically, the code fails to account for the case where the most significant bit of the number is 1.
+; In this case, the code would actually end up complementing the number instead of taking its absolute value.
+
+
+COMP:   PUSH DE 	; Save Address destination 03B0 D5
+                     	; address source is in HL
+        LD BC, 4		; qty of BYTES occupied 03B1 01 04 00
+                     	; by number
+        LD A, C 		; Save qty of BYTES 03B4 79
+        LDIR 		; Transfer 4 BYTES of 03B5 ED B0
+                     	; (HL) to (DE)
+        LD C, A 		; Recover qty. of BYTES 03B7 4F
+        DEC DE 		; DE points to BYTE 03B8 1B
+                     	; most significant
+        LD A, (DE)	; Get BYTE plus 03B9 1A
+                     	; significant
+        RLCA		; Put signal on CY and 03BA 07
+                     	; at BIT 0 of ACC
+        JP NC, PULA13	; Jump if positive 03BB D2 CC 03
+        CCF			; Makes positive 03BE 3F
+        RRA 		; Put positive sign 03BF 1F
+                     	; of the no. and makes CY = 1
+        LD (DE), A	; Save BYTE plus 03C0 12
+                     	; significant
+        POP DE 		; Retrieve Address Destination 03C1 D1
+                     	; to recover BYTE
+                     	; less significant
+                     	; the carry is zero
+LOOP15: LD A, (DE)	; Recover BYTE 03C2 1A
+        CPL 		; Complements BYTE. 03C3 2F
+                     	; B contains zero
+        ADC A, B		; Sum BYTE with Carry 03C4 88
+        LD (DE), A	; Save BYTE 03C5 12
+        INC DE 		; Points to the next 03C6 13
+                     	; BYTE
+        DEC C 		; Decrease counter from 03C7 0D
+                     	; BYTES
+        JP NZ, LOOP15	; If not finished, come back 03C8 C2 C2 03
+        RET 		;End. the no. is negative 03CB C9
+                     	;
+PULA13: POP DE 		; Recovers position of 03CC D1
+                     	; STACK POINTER
+        RET 		;End. the no. is positive 03CD C9
+
+;--------------------;
+        DS 2 ; Unused area 03CE FF FF
+                     ; 2 BYTES
+;--------------------;
+
+; Square root of a number. placed in HLDE and puts the result in BC.
+; Newton Raphson method.
+; This code calculates the square root of a number. It starts by loading the number into registers A, B, C, D, and E.
+; It then shifts the bits in the number right by one bit.
+; It then checks if the number is zero.
+; If the number is not zero, it subtracts the number from the previous number.
+; If the number is zero, it returns the square root of the number.
+
+ROOT: LD A, 2		; need to split the number. 03D0 3E 02
+                     	; by 4 not to happen
+                     	; OVERFLOW
+LOOP16: SRL H 		; Divide H by 2, put 03D2 CB 3C
+                     	; BIT 0 of H in CY
+        RR L 		; Divide L by 2, put 03D4 CB 1D
+                     	; BIT 0 of L in CY
+        RR D 		; Divide D by 2, put 03D6 CB 1A
+                     	; BIT 0 of D in CY
+        RR E 		; Divide E by 2, put 03D8 CB 1B
+                     	; BIT 0 of E in CY
+        DEC A 		; Decrease counter 03DA 3D
+        JR NZ, LOOP16	; If not finished, return 03DB 20 F5
+        PUSH DE 		; Save 2 BYTES minus 03DD D5
+                     	; significant from no.
+        PUSH HL 		; Saves 2 BYTES plus 03DE E5
+                     	; significant from no.
+        LD BC, 0FFFFH	; First approach 03DF 01 FF FF
+                     	; of the result
+        XOR A 		; Clear the Carry and ACC 03E2 AF
+        OR H 		; 03E3 B4
+        OR L 		; 03E4 B5
+        OR D 		; 03E5 B2
+        OR E 		; Check if the no. to 03E6 B3
+                     	; be calculated in rais it's zero
+        JP NZ, PULA14	; If not zero, 03E7 C2 EF 03
+                     	; calculate root
+        INC BC		; Make BC = zero 03EA 03
+        POP HL 		; 03EB E1
+        POP DE 		; Recovers position of 03EC D1
+                     	; STACK POINTER
+        RET			; End, if the root is zero 03ED C9
+        NOP 		; 03EE 00
+PULA14: SCF			; Makes CY = 1 03EF 37
+LOOP17: RR B 		; CY for BIT 7 of B and 03F0 CB 18
+                     	; BIT 0 from B to CY
+        RR C 		; CY to BIT 7 of C 03F2 CB 19
+                     	; Below, check how many bits does the number:
+        EX DE, HL		; 03F4 EB
+        ADD HL, HL 	; 03F5 29
+        EX DE, HL		; 03F6 EB
+        ADC HL, HL	; HLDE times 2 03F7 ED 6A
+        JP C, LOOP18	; if qty of even BITS, 03F9 DA 04 04
+                     	; jump
+        EX DE, HL		; 03FC EB
+        ADD HL, HL 	; 03FD 29
+        EX DE, HL		; 03FE EB
+        ADC HL, HL	; HLDE times 2 03FF ED 6A
+        JP NC, LOOP17	; if qty of BITS no 0401 D2 F0 03
+                     	; found, come back
+LOOP18: POP HL 		; Retrieve number in 0404 E1
+        POP DE 		; HLDE, in BC has the 0405 D1
+                     	; first approach
+                     	; of the result
+        PUSH DE 		; 0406 D5
+        PUSH HL 		; save no. to 0407 E5
+                     	; next iteration
+        CALL DIVIDE 	; Divide number by 0408 CD 59 03
+                     	; current approach
+        EX DE, HL		; Put the result of 040B EB
+                     	; division in HL
+        ADD HL, BC	; Sum with approximation 040C 09
+                     	; current
+        EX DE, HL		; Put the sum in DE 040D EB
+        SRL D 		; Divide by 2. You get 040E CB 3A
+        RR E 		; now new approach 0410 CB 1B
+                     	; from the root and DE
+        LD H, B		; Put the approximation 0412 60
+        LD L, C 		; previous in HL 0413 69
+        LD B, D 		; Put the approximation 0414 42
+        LD C, E		; current at BC 0415 4B
+                     	;
+        OR A         	; Clean Carry 0416 B7
+        SBC HL, DE	; Previous approach 0417 ED 52
+                     	; minus the current
+        JP Z, PULA15	; If equal, skip 0419 CA 23 04
+        ADD HL, DE 	; Recovers approach 041C 19
+                     	; previous
+		    		; The current approach is in DE and also in BC
+        INC DE 		; Increases approximation 041D 13
+                     	; current in DE
+        SBC HL, DE	; Previous approach 041E ED 52
+                     	; - current approach
+        JP NZ, LOOP18	; If the current approach 0420 C2 04 04
+                     	; does not satisfy, come back and
+                     	; make a new iteration
+PULA15: POP HL 		; 0423 E1
+        POP DE 		; Recovers position of 0424 D1
+                     	; STACK POINTER
+        SLA C 		; Multiply the root by 0425 CB 21
+        RL B 		; 2, since the number was 0427 CB 10
+                     	; divided by 4
+        RET			; The end. The root is in BC 0429 C9
+
+
+;--------------------;
+        DS 6 ; Unused area 042A FF FF FF FF
+                     ; 6 BYTES
+;--------------------; 97 DEEL/UFRJ
+
+; Calculates the modulus of each harmonic with 16 BITS (uint16_t)
+; and stores on pages 6 and 7 of RAM, 256 values
+
+
+MODULE: LD A, 1 		; First module to be 0430 3E 01
+                     	; calculated and first harmonic
+LOOP19: LD (GC), A 	; Save the counter 0432 32 4C 10
+        LD L, A		; Set the counter to 0435 6F
+        LD H, 0		; HL 0436 26 00
+        ADD HL, HL 	; Double counter because 0438 29
+                     	; the result is with 2 BYTES
+        LD DE, MI		; address BUFFER destination 0439 11 80 11
+                     	; module temporary
+        ADD HL, DE 	; HL points to end. 043C 19
+                     	; module temporary
+        LD (GMI), HL	; Save address 043D 22 4D 10
+        OR A         	; Clean Carry 0440 B7
+        SBC HL, DE	; Recovers counter 0441 ED 52
+                     	; folded up
+        ADD HL, HL 	; Double counter 0443 29
+                     	; again because the given source is from 4 BYTES
+        LD BC, AI+2	; BC points to part 0444 01 02 08
+                     	; integer of A(0)
+        ADD HL, BC	; HL points to part 0447 09
+                     	; integer of A(I)
+        LD (GAI), HL	; Save address of A(I) 0448 22 3F 10
+        LD BC, 1024	; B(I) is 1024 BYTES 044B 01 00 04
+                     	; after A(I)
+        ADD HL, BC	; HL points to part 044E 09
+                     	; integer of B(I)
+        LD E, (HL)	; 044F 5E
+        INC HL		; 0450 23
+        LD D, (HL)	; Put B(I) in DE 0451 56
+        LD HL, 0		; Clean HL 0452 21 00 00
+        OR A         	; Cleaner CY 0455 B7
+        SBC HL, DE	; HL = -B(I) 0456 ED 52
+        JP M, PULA16	; If -B(I) is negative, 0458 FA 5C 04
+                     	; the module of B(I) is
+                     	; in DE, then jump
+        EX DE, HL		; Being -(B(I) positive, 045B EB
+                     	; so the module that it's in HL then transfer it to DE
+PULA16: LD B, D 		; Puts in the multiplicand 045C 42
+        LD C, E		; the multiplier 045D 4B
+        CALL MULTIP 	; Makes B(I)^2 in DEHL 045E CD 42 03
+        PUSH DE 		; Save B(I)^2 in STACK 0461 D5
+        PUSH HL 		; 0462 E5
+        LD HL, (GAI)	; Retrieve end. of part 0463 2A 3F 10
+                     	; integer of A(I)
+        LD E, (HL)	; 0466 5E
+        INC HL		; 0467 23
+        LD D, (HL)	; Put A(I) in DE 0468 56
+                     	;
+        LD HL, 0		; Same comments 0469 21 00 00
+                     	; from B(I) to A(I)
+        OR A         	; 046C B7
+        SBC HL, DE	; 046D ED 52
+        JP M, PULA17	; 046F FA 73 04
+        EX DE, HL		; 0472 EB
+PULA17: LD B, D 		; 0473 42
+        LD C, E		; 0474 4B
+        CALL MULTIP 	; Do A(I)^2 in DEHL 0475 CD 42 03
+
+;--------------------; 99 DEEL/UFRJ
+
+        POP BC 	   	; Recovers the 2 BYTES 0478 C1
+                   	; less significant
+                   	; of B(I)^2
+        ADD HL, BC	; Add the 2 LSBYTES of 0479 09
+                     	; B(I)^2 as the
+                     	; 2 LSBYTES of A(I)^2
+        EX DE, HL		; Save sum in DE and 047A EB
+                     	; puts the 2 MSBYTES of
+                     	; A(I)^2 in HL
+        POP BC 		; Retrieve the 2 MSBYTES 047B C1
+                     	; of B(I)^2
+        ADC HL, BC	; Add the 2 MSBYTES of 047C ED 4A
+                     	; B(I)^2 with the
+                     	; 2 MSBYTES of A(I) and
+                     	; with previous CY
+        CALL ROOT 	; Calculates square root 047E CD D0 03
+                     	; sqr((A(I)^2)+(B(I)^2))
+                     	; and put result in
+                     	; BC
+        LD A, (GM +1)	; Put M in ACC 0481 3A 03 10
+        NEG			; -M in ACC 0484 ED 44
+        ADD A, 9		; 9 - M in ACC 0486 C6 09
+                     	; The loop below does:
+                     	; M(I) = (sqr((A(I)^2) +
+                     	; (B(I)^2))) * 2 / N,
+                     	; assuming that the BYTES
+                   	; in B = integer part and
+                   	; in C = fractional part
+LOOP20: SLA C 		; 0488 CB 21
+        RL B 		; BC times 2 048A BC 10
+        DEC A 		; Decrease counter 048C 3D
+        JR NZ, LOOP20	; If not finished, return 048D 20 F9
+        LD HL, (GMI)	; Retrieve end. destination 048F 2A 4D 10
+                     	; of the temporary BUFFER
+        LD (HL), C		; 0492 71
+        INC HL		; 0493 23
+        LD (HL), B		; Put M(I) module on 0494 70
+                     	; temporary BUFFER
+        LD A, (GC)	; Recovers counter 0495 3A 4C 10
+        INC A		; Increase counter 0498 3C
+        LD HL, GN		; 0499 21 00 10
+        CP (HL)		; Compare counter with N 049C BE
+        JP NZ, LOOP19	; If it's not over, come back 049D C2 32 04
+        LD HL, (AI+2)	; Retrieves part 04A0 2A 02 08
+                     	; integer of A(0)
+        LD A, (GM +1)	; M in ACC 04A3 3A 03 10
+        NEG			; -M in ACC 04A6 ED 44
+        ADD A, 9		; 9 - M in ACC 04A8 C6 09
+                     	; The snippet below does
+                     	; M(0) = A(0) / N,
+                     	; assuming that the BYTE
+                     	; in L is part
+                     	; fractional:
+        SRL H 		; Divide A(0) by 2 04AA CB 3C
+        RR L 		; 04AC CB 1D
+LOOP21: SLA L 		; Multiply A(0) by 2 04AE CB 25
+        RL H		; 04B0 CB 14
+        DEC A 		; Decrease counter 04B2 3D
+        JR NZ, LOOP21	; If not finished, return 04B3 20 F9
+        LD BC, 8000H	; Recovers DC level that 04B5 01 00 80
+                     	; was subtracted before
+                     	; FFT calculation
+        ADD HL, BC	; Restore level DC 04B8 09
+                     	; original of the sign
+        LD (MI), HL	; Guard M(0) 04B9 22 80 11
+        LD HL, (GN)	; Recovers N 04BC 2A 00 10
+        LD BC, MI+1	; BC points to BYTE 04BF 01 81 11
+                     	; most significant of
+                     	; M(0)
+
+;--------------------; 101 DELL/UFRJ
+
+        ADD HL, BC	; HL points to BYTE 04C2 09
+                     	; most significant of
+                     	; M(N/2)
+        SRL (HL)		; 04C3 CB 3E
+        DEC HL 		; 04C5 2B
+        RR (HL)		; Divide M(N/2) by 2 04C6 CB 1E
+        LD BC, 512		; qty from BYTES to 04C8 01 00 02
+                     	; transfer
+        LD DE, MI16	; address destination 04CB 11 00 0E
+                     	; definitive of the module
+                     	; in 16 BIT
+        LD HL, MI		; address 04CE temporary 21 80 11
+                     	; 16-bit module
+        LDIR 		; Transfer 512 BYTES 04D1 ED B0
+        RET			; The end. The FFT 04D3 C9 module
+                     ; is stored
+                     ; in the addresses
+                     ; from DE00H to 0FFFFH,
+                     ; for modifications
+                     ; later, like
+                     ; presentation of
+                     ; results in dB
+
+;--------------------;
+
+        ; This subroutine represents the
+        ; 8-bit rounded module and
+        ; put in memory area]
+        ; from 1180H to 127FH and repeats in the area
+        ; from 0800H to 08FFH, the
+        ; DISPLAY with letter 'F'
+TRANSF: LD HL, MI16	; address of the module with 04D4 21 00 0E
+                     	; 16 BIT
+        LD DE, MI8	; address of the module to be 04D7 11 80 11
+                     	; stored with 8 bits
+        LD BC, (GN)	; qty of points to be 04DA ED 4B 00 10
+                     	; transferred
+LOOP22: LD A, (HL)	; BYTE minus 04DE 7E
+                     	; significant of M(I)
+
+;--------------------; 102 DELL/UFRJ
+
+        ADD A, A 		; If BIT plus 04DF 87
+                     	; significant is 1,
+                     	; so there's Carry
+        INC HL		; Points to BYTE plus 04E0 23
+                     	; significant of M(I)
+        LD A, (HL)	; I get BYTE plus 04E1 7E
+                     	; significant
+        JR NC, PULA18	; If BIT plus 04E2 30 01
+                     	; significant of BYTE
+                     	; less significant than
+                     	; M(I) is zero, skip
+        INC A		; Increments BYTE plus 04E4 3C
+                     	; significant
+PULA18: LD (DE), A 	; Save module 04E5 12
+                     	; rounded to 8 bits
+                     	; at the new address
+        INC DE 		; Points to next 04E6 13
+                     	; end destiny
+        INC HL		; Points to BYTE minus 04E7 23
+                     ; significant of
+                     ; next module in
+                     ; 16 BIT
+        DEC C 		; Decrease counter 04E8 0D
+        JP NZ, LOOP22	; If not finished, come back 04E9 C2 OF 04
+        LD BC, 256		; qty of BYTE to be 04EC 01 00 01
+                     	; copied
+        LD DE, 0800H	; address from page zero of 04EF 11 00 08
+                     	; RAM
+        LD HL, MI8	; address where are 04F2 21 80 11
+                     	; stored the modules
+                     	; of the spectrum
+        LDIR 		; Copy modules with 04F5 ED B0
+                     	; 8 bits on page zero
+                     	; from RAM
+        LD A, 71H		; Code of letter 'F' in 04F7 3E 71
+                     	; DISPLAY
+
+;--------------------; 103 DELL/UFRJ
+
+        LD (DISPL), A	; DISPLAY lights up with 'F' 04F9 32 00 38
+                     	; indicating that what
+                     	; it's on page zero
+                     	; of RAM is the spectrum
+        RET			; The end. 04FC C9
+
+; THE END:                 ; End of program. 04FD
+
+
+;--------------------;
+        DS 0183H		; Unused area 04FD FF FF FF FF
+                     	; 387 BYTES
+;--------------------	; 104 DEEL/UFRJ
+
+        ORG 0680H		; Start of the sine table
+;
+TABSEN: 			; PI = 3.141592654
+;
+; Sine and cosine table multiplied by 32767 (uint15_t),
+; ([0..270 degrees)), bit 15 represents the sign, end of EPROM
+;
+    DW 0000H, 0324H, 0648H, 096BH	; 0680 0000 2403 4806 6B09
+    DW 0C8CH, 0FABH, 12C8H, 15E2H	; 0688 8C0C AB0F C812 E215
+    DW 18F9H, 1C0CH, 1F1AH, 2224H	; 0690 F918 0C1C 1A1F 2422
+    DW 2528H, 2827H, 2B1FH, 2E11H	; 0698 2825 2728 1F2B 112E
+    DW 30FCH, 33DFH, 36BAH, 398DH	; 06A0 FC30 DF33 BA36 8D39
+    DW 3C57H, 3F17H, 41CEH, 447BH	; 06A8 573C 173F CE41 7B44
+    DW 471DH, 49B4H, 4C40H, 4EC0H	; 06B0 1D47 B449 404C C04E
+    DW 5134H, 539BH, 55F6H, 5843H	; 06B8 3451 9B53 F655 4358
+    DW 5A82H, 5CB4H, 5ED7H, 60ECH	; 06C0 825A B45C D75E EC60
+    DW 62F2H, 64E9H, 66D0H, 68A7H	; 06C8 F262 E964 D066 A768
+    DW 6A6EH, 6C24H, 6DCAH, 6F5FH	; 06D0 6E6A 246C CA6D 5F6F
+    DW 70E3H, 7255H, 73B6H, 7505H	; 06D8 E370 5572 B673 0575
+    DW 7642H, 776CH, 7885H, 798AH	; 06E0 4276 6C77 8578 8A79
+    DW 7A7DH, 7B5DH, 7C2AH, 7CE4H	; 06E8 7D7A 5D7B 2A7C E47C
+    DW 7D8AH, 7E1EH, 7E9DH, 7F0AH	; 06F0 8A7D 1E7E 9D7E 0A7F
+    DW 7F62H, 7FA7H, 7FD9H, 7FF6H	; 06F8 627F A77F D97F F67F
+    DW 7FFFH, 7FF6H, 7FD9H, 7FA7H	; 0700 FF7F F67F D97F A77F
+    DW 7F62H, 7F0AH, 7E9DH, 7E1EH	; 0708 627F 0A7F 9D7E 1E7E
+    DW 7D8AH, 7CE4H, 7C2AH, 7B5DH	; 0710 8A7D E47C 2A7C 5D7B
+    DW 7A7DH, 798AH, 7885H, 776CH	; 0718 7D7A 8A79 8578 6C77
+    DW 7642H, 7505H, 73B6H, 7255H	; 0720 4276 0575 B673 5572
+    DW 70E3H, 6F5FH, 6DCAH, 6C24H	; 0728 E370 5F6F CA6D 246C
+    DW 6A6EH, 68A7H, 66D0H, 64E9H	; 0730 6E6A A768 D066 E964
+    DW 62F2H, 60ECH, 5ED7H, 5CB4H	; 0738 F262 EC60 D75E B45C
+    DW 5A82H, 5843H, 55F6H, 539BH	; 0740 825A 4358 F655 9B53
+    DW 5134H, 4EC0H, 4C40H, 49B4H	; 0748 3451 C04E 404C B449
+    DW 471DH, 447BH, 41CEH, 3F17H	; 0750 1D47 7B44 CE41 173F
+    DW 3C57H, 398DH, 36BAH, 33DFH	; 0758 573C 8D39 BA36 DF33
+    DW 30FCH, 2E11H, 2B1FH, 2827H	; 0760 FC30 112E 1F2B 2728
+    DW 2528H, 2224H, 1F1AH, 1C0CH	; 0768 2825 2422 1A1F 0C1C
+    DW 18F9H, 15E2H, 12C8H, 0FABH	; 0770 F918 E215 C812 AB0F
+    DW 0C8CH, 096BH, 0648H, 0324H	; 0778 8C0C 6B09 4806 2403
+    DW 0000H, 8324H, 8648H, 896BH	; 0780 0000 2483 4886 6B89
+    DW 8C8CH, 8FABH, 92C8H, 95E2H	; 0788 8C8C AB8F C892 E295
+    DW 98F9H, 9C0CH, 9F1AH, 0A224H	; 0790 F998 0C9C 1A9F 24A2
+
+;-------------------------------------; 105 DEEL/UFRJ
+
+    DW 0A528H, 0A827H, 0AB1FH, 0AE11H	; 0798 28A5 27A8 1FAB 11AE
+    DW 0B0FCH, 0B3DFH, 0B6BAH, 0B98DH	; 07A0 FCB0 DFB3 BAB6 8DB9
+    DW 0BC57H, 0BF17H, 0C1CEH, 0C47BH 	; 07A8 57BC 17BF CEC1 7BC4
+    DW 0C71DH, 0C9B4H, 0CC40H, 0CEC0H 	; 07B0 1DC7 B4C9 40CC C0CE
+    DW 0D134H, 0D39BH, 0D5F6H, 0D843H	; 07B8 34D1 9BD3 F6D5 43D8
+    DW 0DA82H, 0DCB4H, 0DED7H, 0E0ECH 	; 07C0 82DA B4DC D7DE ECE0
+    DW 0E2F2H, 0E4E9H, 0E6D0H, 0E8A7H 	; 07C8 F2E2 E9E4 D0E6 A7E8
+    DW 0EA6EH, 0EC24H, 0EDCAH, 0EF5FH 	; 07D0 6EEA 24EC CAED 5FEF
+    DW 0F0E3H, 0F255H, 0F3B6H, 0F505H 	; 07D8 E3F0 55F2 B6F3 05F5
+    DW 0F642H, 0F76CH, 0F885H, 0F98AH	; 07E0 42F6 6CF7 85F8 8AF9
+    DW 0FA7DH, 0FB5DH, 0FC2AH, 0FCE4H	; 07E8 7DFA 5DFB 2AFC E4FC
+    DW 0FD8AH, 0FE1EH, 0FE9DH, 0FF0AH 	; 07F0 8AFD 1EFE 9DFE 0AFF
+    DW 0FF62H, 0FFA7H, 0FFD9H, 0FFF6H 	; 07F8 62FF A7FF D9FF F6FF
+;
+; End of sine table at 07FF
+;
+;------------------------------------------------ -------------
+;
+;--------------------; 69 DEEL/UFRJ
+;
+; VARIABLE ADDRESSES:
+;
+; In the 1st column is the address in hexadecimal; in the 2nd column,
+; the name of the variable; in the 3rd column, the number of BYTES of the
+; vel.
+;
+; For better understanding many variables have the same name
+; of the program in BASIC, being referred to BASIC, when it is the
+; case.
+;
+         ORG 1000H
+;
+; VARIABLE  BYTES    ; ADDRESS   COMMENT
+GN:         DS 2     ; 1000H     N   , BASIC
+GM:         DS 2     ; 1002H     M   , BASIC
+            DS 2     ; 1004H
+GK:         DS 1     ; 1006H     K   , BASIC
+GK1:        DS 1     ; 1007H     K1  , BASIC
+GK2:        DS 2     ; 1008H     K2  , BASIC
+GK3:        DS 1     ; 100AH     K3  , BASIC
+GP:         DS 1     ; 100BH     P   , BASIC
+GS:         DS 1     ; 100CH     S   , BASIC
+Y1:         DS 2     ; 100DH     Y1  , BASIC
+X1:         DS 2     ; 100FH     X1  , BASIC
+GJ:         DS 1     ; 1011H     J   , BASIC
+AK4:        DS 2     ; 1012H     Address of A(K4), BASIC
+AK5:        DS 2     ; 1014H     Address of A(K5), BASIC
+BK4:        DS 2     ; 1016H     Address of B(K4), BASIC
+BK5:        DS 2     ; 1018H     Address of B(K5), BASIC
+MULT:       DS 4     ; 101AH     multiplying
+C1:         DS 4     ; 101EH     X1 . A(K5)
+C2:         DS 4     ; 1022H     Y1 . B(K5)
+C3:         DS 4     ; 1026H     Y1 . A(K5)
+C4:         DS 4     ; 102AH     X1 . B(K5)
+MUL:        DS 4     ; 102EH     Multiplication result
+                     ;           Renamed from RES to MUL
+
+;--------------------;  70 DEEL/UFRJ
+
+X2:         DS 4     ; 1032H     X2  , BASIC
+Y2:         DS 4     ; 1036H     Y2  , BASIC
+GI:         DS 1     ; 103AH     I   , BASIC
+GAS:        DS 2     ; 103BH     Address of A(S), BASIC
+GBS:        DS 2     ; 103DH     Address of B(S), BASIC
+GAI:        DS 2     ; 103FH     Address of A(I), BASIC
+GBI:        DS 2     ; 1041H     Address of B(I), BASIC
+X3:         DS 4     ; 1043H     X3  , BASIC
+Y3:         DS 4     ; 1047H     Y3  , BASIC
+            DS 1     ; 104BH
+GC:         DS 1     ; 104CH     Subroutine counter
+                     ;		   square root
+GMI:        DS 2     ; 104DH     module address
+            DS 11H   ; 104FH
+FLAG:       DS 1     ; 1060H     Indicates whether the FFT was calculated
+PAG:        DS 1     ; 1061H     table relative address
+                     ; 		   of DISPLAY
+;
+;--------------------------------------------------------------
+;
+        END          ;
+;
+;--------------------------------------------------------------
