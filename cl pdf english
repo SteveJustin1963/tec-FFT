@@ -17,4 +17,20 @@ RIO DE JANEIRO; March 12, 1935.
 I dedicate this work to my parents, ROBERTO AND LUCIA, who always helped and encouraged me in my studies.
 -----------
 
+GRATITUDE
 
+-I thank Prof. ANTONIO CARLOS ROM / IWO DE SOUZA, for his orientation in the project
+-I thank Prof. EDSON HIROKAZU WATANABE; for the allocation of the necessary resources for the project
+-I thank the students of the Electronics Laboratory for their help and support.
+-I thank the Professors of the Department of Electronics for the knowledge acquired in it.
+
+--------------
+SUMMARY:
+
+The spectrum analyzer by FFT (Fast Fourier Transform) obtains the spectrum of a periodic signal through software, 
+from 256 sampled points. The input signal must be in the range of 1V to 4V. 
+The output signal will also be in the range of 1V to 4V. 
+The device can be used in conjunction with an oscilloscope. 
+Spectrum presentation is on the device screen. It also allows it to be used as oscilloscope memory for up to 2048 points. 
+Can be attached to an X-Y plotter.
+------------------------
