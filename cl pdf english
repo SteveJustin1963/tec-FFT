@@ -34,3 +34,39 @@ The device can be used in conjunction with an oscilloscope.
 Spectrum presentation is on the device screen. It also allows it to be used as oscilloscope memory for up to 2048 points. 
 Can be attached to an X-Y plotter.
 ------------------------
+
+INDEX
+CHAPTER 1 PAGE
+INTRODUCTION TO THE SPECTRUM ANALYZER
+
+CHAPTER 2
+The FFT
+2.1 Introduction to the Fourier Transform 3 program
+2.2 Cooley-Tukey's Book of FFT 3
+2.3 Comments on the representation of numbers 5
+2.4 Conclusions about the program 6
+
+CHAPTER 3
+A/D or D/A CONVERTER 7
+3.1 Functional description 7
+3.2 D/A converter 10
+3.3 Choice of comparator 14
+3:4 the input sampler 15
+3.5 the output sampler. 16
+3.6 Determining the supply voltages 16
+3.7 start and end of conversation control 17
+3.8 Talk time 20
+3.9 variable frequency oscillator 20
+
+CHAPTER 4
+4.1 The control logic of the converter 23
+4.2 The time diagrams 27
+
+CHAPTER 5
+ Microcomputer
+5.1 Choosing CPU 35
+5.2 Description of CPU signals 35
+5.3 CPU Time Diagram 38
+5.4 The logic of bus and interrupt controls 45
+
+--------------------------
