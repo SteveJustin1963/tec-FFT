@@ -1,3 +1,45 @@
+ pseudocode
+
+
+
+function FFT(array A, int N)
+    // calculate M
+    M = Log2(N)
+    
+    // reverse the bits of each element's index in the array
+    for i = 0 to N-1
+        reverseBits(A[i], M)
+    
+    // do the FFT
+    for s = 1 to M
+        // calculate K
+        K = 2^s
+        
+        // calculate W_N^k
+        W_N^k = e^(2 * pi * i / N)
+        
+        for j = 0 to N-1
+            // calculate A_j
+            A_j = A[j]
+            
+            // calculate A_jk
+            A_jk = A[j + k]
+            
+            // calculate W_N^jk
+            W_N^jk = e^(2 * pi * j * k / N)
+            
+            // update A_j and A_jk
+            A[j] = A_j + W_N^jk * A_jk
+            A[j + k] = A_j - W_N^jk * A_jk
+        
+        // end for
+        end
+        
+    // end for
+    end
+
+// end function FFT
+
 
 
 ;--------------------------------------------------------------
