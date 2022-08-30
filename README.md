@@ -13,6 +13,7 @@ read an input and convert to spectrum bars to output on 8x8 or 7 seg using FFT a
 - https://codeforces.com/blog/entry/43499
 - https://www.earlevel.com/main/2002/08/31/a-gentle-introduction-to-the-fft/
 - http://www.nrbook.com/a/bookcpdf.php
-- 
+- https://au.mathworks.com/help/matlab/ref/fft.html
+
 
 
