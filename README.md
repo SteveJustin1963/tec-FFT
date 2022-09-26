@@ -1,6 +1,6 @@
 # tec-FFT
  
-read an input and convert to spectrum bars to output on 8x8 or 7 seg using FFT algorithm
+read an input and convert to spectrum bars on the 8x8 or 7 seg using FFT algorithm
 
 
 ### Ref
