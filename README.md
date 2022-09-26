@@ -16,6 +16,8 @@ read an input and convert to spectrum bars on the 8x8 or 7 seg using FFT algorit
 - https://au.mathworks.com/help/matlab/ref/fft.html
 - https://www.fftw.org/
 - http://www.dspguide.com/ch12/3.htm
+- https://towardsdatascience.com/fast-fourier-transform-937926e591cb
+
 
 
 
