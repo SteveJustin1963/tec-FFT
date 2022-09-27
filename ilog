@@ -1,0 +1,28 @@
+; https://programmingpraxis.com/2010/05/07/integer-logarithms/2/
+
+(define (ilog b n)
+  (let loop1 ((lo 0) (b^lo 1) (hi 1) (b^hi b))
+    (if (< b^hi n) (loop1 hi b^hi (* hi 2) (* b^hi b^hi))
+      (let loop2 ((lo lo) (b^lo b^lo) (hi hi) (b^hi b^hi))
+        (if (<= (- hi lo) 1) (if (= b^hi n) hi lo)
+          (let* ((mid (quotient (+ lo hi) 2))
+                 (b^mid (* b^lo (expt b (- mid lo)))))
+            (cond ((< n b^mid) (loop2 lo b^lo mid b^mid))
+                  ((< b^mid n) (loop2 mid b^mid hi b^hi))
+                  (else mid))))))))
+
+
+
+convert to forth  code
+: ilog ( b n -- x )
+   2dup >r swap >r 2swap 1 2swap
+   begin
+      2dup r> r@ > if
+         >r r> r@ >r r@ * 2dup >r swap >r
+         >r r@ r> >r r@ r> >r r@ r> >r
+      else
+         drop
+      then
+   repeat
+   2drop
+;
