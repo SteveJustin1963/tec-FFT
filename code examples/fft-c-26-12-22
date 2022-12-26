@@ -1,4 +1,4 @@
-m an FFT (Fast Fourier Transform) on a 1024-byte dataset with 8-bit wide data in C, you can follow these steps:
+To perform an FFT (Fast Fourier Transform) on a 1024-byte dataset with 8-bit wide data in C, you can follow these steps:
 
 Include the necessary libraries. You will need to include the fftw3.h library to use the FFTW library for FFT calculations.
 
@@ -20,3 +20,46 @@ Once you have finished processing the frequency slots, you can plot the results 
 
 Note that these steps are just a general outline, and you may need to adjust the specifics depending on your specific needs and the characteristics of your dataset.
 
+----------
+
+This program first declares the input data array and the FFT result array, and loads the input data into the input array. It then applies a Hanning window to the input data using the fftw_hanning() function. Next, it allocates memory for the FFT plan using the fftw_plan_dft_1d() function, and executes the plan using the fftw_execute() function. Finally, it extracts the 8 desired frequency slots from the FFT result array and prints the magnitudes of these frequency slots to the console.
+
+Note that this is just a basic example, and you may need to adjust the specifics depending on your specific needs and the characteristics of your dataset. You may also want to consider saving the FFT result to a file or plotting the results using a tool such as gnuplot.
+
+#include <stdio.h>
+#include <fftw3.h>
+
+#define N 1024  // Size of the input data
+
+int main() {
+  // Declare variables for the input data and the FFT result
+  unsigned char input[N];
+  fftw_complex output[N];
+
+  // Load the input data into the input array
+  for (int i = 0; i < N; i++) {
+    input[i] = /* some value */;
+  }
+
+  // Apply a window function to the input data
+  fftw_hanning(input, N);
+
+  // Allocate memory for the FFT plan
+  fftw_plan plan = fftw_plan_dft_1d(N, input, output, FFTW_FORWARD, FFTW_ESTIMATE);
+
+  // Execute the FFT plan
+  fftw_execute(plan);
+
+  // Extract the desired frequency slots
+  for (int i = 0; i < 8; i++) {
+    double re = output[i][0];
+    double im = output[i][1];
+    double magnitude = sqrt(re*re + im*im);
+    printf("Frequency slot %d: %f\n", i, magnitude);
+  }
+
+  // Clean up
+  fftw_destroy_plan(plan);
+
+  return 0;
+}
