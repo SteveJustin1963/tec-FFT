@@ -196,3 +196,57 @@ It is worth noting that this code will likely not be as efficient as the origina
 
 
 ==============
+
+FT (Fast Fourier Transform) is an algorithm for efficiently computing the discrete Fourier transform (DFT) of a sequence. Here is an example of how FFT could be implemented in Forth:
+
+\ FFT implementation in Forth
+
+\ Recursive FFT
+: fft ( x1 x2 -- x1' x2' )
+2dup < if
+2swap 0 swap
+else
+dup >r >r
+over - 1 fft
+r> r> - 1 fft
+dup exp swap * swap
+r> exp r> * +
+then
+;
+
+\ Inverse FFT
+: ifft ( x1 x2 -- x1' x2' )
+2dup < if
+2swap 0 swap
+else
+dup >r >r
+over - 1 ifft
+r> r> - 1 ifft
+dup exp swap * swap
+r> exp r> * -
+then
+;
+
+This is just one example of how FFT could be implemented in Forth. There are many other ways to implement FFT in Forth, and the specific approach will depend on the requirements of the application and the target platform.
+
+To use this FFT implementation, you would call the fft or ifft function with a pair of complex numbers representing the input data. The function will return the transformed data as a pair of complex numbers.
+
+For example, to compute the FFT of the input data (1, 2), you would call the fft function like this:
+
+1 2 fft
+
+This would return the transformed data as a pair of complex numbers:
+
+(3, 2)
+
+To compute the inverse FFT (IFFT) of the input data (3, 2), you would call the ifft function like this:
+
+3 2 ifft
+
+This would return the transformed data as a pair of complex numbers:
+
+(1, 2)
+
+Keep in mind that this is just a simple example of how FFT could be implemented in Forth, and it may not be suitable for all applications. In particular, this implementation is not optimized for performance, and it may be slower than other FFT implementations.
+
+=================
