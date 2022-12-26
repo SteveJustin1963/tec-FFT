@@ -66,7 +66,7 @@ int main() {
 
 
 ===================
-rting the code to z80 assembly language will involve a number of steps:
+converting the code to z80 assembly language will involve a number of steps:
 
 Replace the C library functions with their equivalent z80 assembly code. For example, the printf function will need to be replaced with z80 assembly code that performs the same task of printing text to the console.
 
