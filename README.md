@@ -1,6 +1,6 @@
 # tec-FFT
  
-read an input and convert to spectrum bars on the 8x8 or 7 seg using FFT algorithm
+send ip to ADC, convert to integers, run thru DFT and convert to spectrum, display onLCD or 8x8 
 
 
 
